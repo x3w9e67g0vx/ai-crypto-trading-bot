@@ -38,7 +38,9 @@ class Indicator(Base):
     __tablename__ = "indicators"
 
     id = Column(Integer, primary_key=True, index=True)
-    candle_id = Column(Integer, ForeignKey("candles.id"), nullable=False, index=True)
+    candle_id = Column(
+        Integer, ForeignKey("candles.id"), nullable=False, index=True, unique=True
+    )
 
     rsi = Column(Float, nullable=True)
     ema_fast = Column(Float, nullable=True)

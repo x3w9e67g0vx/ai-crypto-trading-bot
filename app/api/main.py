@@ -8,6 +8,7 @@ from app.db import models
 from app.db.base import Base
 from app.db.dependencies import get_db
 from app.db.session import engine
+from app.services.indicator_service import IndicatorService
 from app.services.ingestion_service import IngestionService
 from app.services.market_data_service import MarketDataService
 
@@ -87,6 +88,21 @@ def update_ohlcv(
 ) -> dict[str, object]:
     service = IngestionService(db)
     result = service.update_ohlcv(symbol=symbol, timeframe=timeframe, limit=limit)
+
+    return {
+        "status": "ok",
+        **result,
+    }
+
+
+@app.post("/indicators/calculate")
+def calculate_indicators(
+    symbol: str = Query(default="BTC/USDT"),
+    timeframe: str = Query(default="5m"),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    service = IndicatorService(db)
+    result = service.calculate_and_save(symbol=symbol, timeframe=timeframe)
 
     return {
         "status": "ok",
