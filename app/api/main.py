@@ -67,6 +67,7 @@ def ml_dataset_preview(
     symbol: str = Query(default="BTC/USDT"),
     timeframe: str = Query(default="5m"),
     lag_periods: int = Query(default=3, ge=1, le=20),
+    future_steps: int = Query(default=1, ge=1, le=20),
     limit: int = Query(default=10, ge=1, le=100),
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
@@ -75,15 +76,39 @@ def ml_dataset_preview(
         symbol=symbol,
         timeframe=timeframe,
         lag_periods=lag_periods,
+        future_steps=future_steps,
         dropna=True,
     )
 
-    preview = df.tail(limit).to_dict(orient="records")
+    preview_columns = [
+        "timestamp",
+        "close",
+        "future_close",
+        "target",
+        "rsi",
+        "macd",
+        "ema_fast",
+        "ema_slow",
+        "close_lag_1",
+        "close_lag_2",
+        "close_lag_3",
+    ]
+
+    available_columns = [col for col in preview_columns if col in df.columns]
+    preview = df[available_columns].tail(limit).to_dict(orient="records")
+
+    target_distribution = (
+        df["target"].value_counts().sort_index().to_dict()
+        if "target" in df.columns and not df.empty
+        else {}
+    )
 
     return {
         "symbol": symbol,
         "timeframe": timeframe,
         "rows": len(df),
+        "future_steps": future_steps,
+        "target_distribution": target_distribution,
         "preview": preview,
     }
 

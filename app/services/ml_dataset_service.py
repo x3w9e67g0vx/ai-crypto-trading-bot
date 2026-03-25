@@ -83,11 +83,23 @@ class MLDatasetService:
 
         return df
 
+    def add_target(self, df: pd.DataFrame, future_steps: int = 1) -> pd.DataFrame:
+        if df.empty:
+            return df
+
+        df = df.copy()
+
+        df["future_close"] = df["close"].shift(-future_steps)
+        df["target"] = (df["future_close"] > df["close"]).astype(int)
+
+        return df
+
     def prepare_dataset(
         self,
         symbol: str,
         timeframe: str,
         lag_periods: int = 3,
+        future_steps: int = 1,
         dropna: bool = True,
     ) -> pd.DataFrame:
         df = self.load_base_dataframe(symbol=symbol, timeframe=timeframe)
@@ -97,6 +109,7 @@ class MLDatasetService:
 
         df = self.add_basic_features(df)
         df = self.add_lag_features(df, lag_periods=lag_periods)
+        df = self.add_target(df, future_steps=future_steps)
 
         if dropna:
             df = df.dropna().reset_index(drop=True)
