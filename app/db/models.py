@@ -84,3 +84,13 @@ class Trade(Base):
     amount = Column(Float, nullable=False)
     fee = Column(Float, nullable=True)
     balance_after = Column(Float, nullable=True)
+
+
+class PortfolioState(Base):
+    __tablename__ = "portfolio_state"
+
+    id = Column(Integer, primary_key=True, index=True)
+    symbol = Column(String, nullable=False, unique=True, index=True)
+    usdt_balance = Column(Float, nullable=False, default=1000.0)
+    asset_balance = Column(Float, nullable=False, default=0.0)
+    updated_at = Column(BigInteger, nullable=False)
