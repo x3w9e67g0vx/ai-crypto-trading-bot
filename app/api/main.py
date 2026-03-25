@@ -11,6 +11,7 @@ from app.db.session import engine
 from app.services.indicator_service import IndicatorService
 from app.services.ingestion_service import IngestionService
 from app.services.market_data_service import MarketDataService
+from app.services.ml_dataset_service import MLDatasetService
 
 app = FastAPI(title="AI Crypto Trading Bot")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -58,6 +59,32 @@ def get_ohlcv(
         "timeframe": timeframe,
         "count": len(candles),
         "candles": candles,
+    }
+
+
+@app.get("/ml/dataset/preview")
+def ml_dataset_preview(
+    symbol: str = Query(default="BTC/USDT"),
+    timeframe: str = Query(default="5m"),
+    lag_periods: int = Query(default=3, ge=1, le=20),
+    limit: int = Query(default=10, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    service = MLDatasetService(db)
+    df = service.prepare_dataset(
+        symbol=symbol,
+        timeframe=timeframe,
+        lag_periods=lag_periods,
+        dropna=True,
+    )
+
+    preview = df.tail(limit).to_dict(orient="records")
+
+    return {
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "rows": len(df),
+        "preview": preview,
     }
 
 

@@ -43,6 +43,7 @@ class IndicatorService:
         df = df.copy()
 
         # EMA
+        #
         df["ema_fast"] = df["close"].ewm(span=12, adjust=False).mean()
         df["ema_slow"] = df["close"].ewm(span=26, adjust=False).mean()
 
