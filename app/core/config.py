@@ -12,6 +12,11 @@ class Settings:
     POSTGRES_HOST: str = os.getenv("POSTGRES_HOST", "localhost")
     POSTGRES_PORT: str = os.getenv("POSTGRES_PORT", "5432")
 
+    EXCHANGE_NAME: str = os.getenv("EXCHANGE_NAME", "binance")
+    DEFAULT_SYMBOL: str = os.getenv("DEFAULT_SYMBOL", "BTC/USDT")
+    DEFAULT_TIMEFRAME: str = os.getenv("DEFAULT_TIMEFRAME", "5m")
+    OHLCV_LIMIT: int = int(os.getenv("OHLCV_LIMIT", "100"))
+
     @property
     def database_url(self) -> str:
         return (
