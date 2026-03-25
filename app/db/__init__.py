@@ -1,3 +1,17 @@
-from app.db.models import Candle, Indicator, PortfolioState, Signal, Trade
+from app.db.models import (
+    Candle,
+    Indicator,
+    ModelTrainingRun,
+    PortfolioState,
+    Signal,
+    Trade,
+)
 
-__all__ = ["Candle", "Indicator", "Signal", "Trade", "PortfolioState"]
+__all__ = [
+    "Candle",
+    "Indicator",
+    "Signal",
+    "Trade",
+    "PortfolioState",
+    "ModelTrainingRun",
+]

@@ -1,9 +1,12 @@
+import asyncio
+
 from fastapi import Depends, FastAPI, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.db import models
 from app.db.base import Base
 from app.db.dependencies import get_db
@@ -14,8 +17,10 @@ from app.services.ingestion_service import IngestionService
 from app.services.market_data_service import MarketDataService
 from app.services.ml_dataset_service import MLDatasetService
 from app.services.ml_model_service import MLModelService
+from app.services.notification_service import NotificationService
 from app.services.paper_trading_service import PaperTradingService
 from app.services.strategy_service import StrategyService
+from app.services.telegram_service import TelegramService
 
 app = FastAPI(title="AI Crypto Trading Bot")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -142,6 +147,8 @@ def get_latest_signal(
     future_steps: int = Query(default=3, ge=1, le=20),
     buy_threshold: float = Query(default=0.7, gt=0.0, lt=1.0),
     sell_threshold: float = Query(default=0.3, gt=0.0, lt=1.0),
+    cooldown_ms: int = Query(default=900000, ge=0),
+    use_trend_filter: bool = Query(default=True),
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     service = StrategyService(db)
@@ -152,6 +159,8 @@ def get_latest_signal(
         future_steps=future_steps,
         buy_threshold=buy_threshold,
         sell_threshold=sell_threshold,
+        cooldown_ms=cooldown_ms,
+        use_trend_filter=use_trend_filter,
     )
 
 
@@ -224,6 +233,26 @@ def run_backtest(
         trade_fraction=trade_fraction,
         fee_rate=fee_rate,
     )
+
+
+@app.get("/ml/training-runs")
+def get_training_runs(
+    symbol: str | None = Query(default=None),
+    timeframe: str | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    service = MLModelService(db)
+    runs = service.get_recent_training_runs(
+        symbol=symbol,
+        timeframe=timeframe,
+        limit=limit,
+    )
+
+    return {
+        "count": len(runs),
+        "runs": runs,
+    }
 
 
 @app.post("/ingest/ohlcv")
@@ -304,6 +333,8 @@ def generate_and_save_signal(
     future_steps: int = Query(default=3, ge=1, le=20),
     buy_threshold: float = Query(default=0.7, gt=0.0, lt=1.0),
     sell_threshold: float = Query(default=0.3, gt=0.0, lt=1.0),
+    cooldown_ms: int = Query(default=900000, ge=0),
+    use_trend_filter: bool = Query(default=True),
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     service = StrategyService(db)
@@ -314,6 +345,8 @@ def generate_and_save_signal(
         future_steps=future_steps,
         buy_threshold=buy_threshold,
         sell_threshold=sell_threshold,
+        cooldown_ms=cooldown_ms,
+        use_trend_filter=use_trend_filter,
     )
 
 
@@ -339,4 +372,105 @@ def execute_paper_trade(
         sell_threshold=sell_threshold,
         trade_fraction=trade_fraction,
         fee_rate=fee_rate,
+    )
+
+
+@app.post("/telegram/send/last-signal")
+def send_last_signal_to_telegram(
+    symbol: str = Query(default="BTC/USDT"),
+    timeframe: str = Query(default="5m"),
+    lag_periods: int = Query(default=3, ge=1, le=20),
+    future_steps: int = Query(default=3, ge=1, le=20),
+    buy_threshold: float = Query(default=0.7, gt=0.0, lt=1.0),
+    sell_threshold: float = Query(default=0.3, gt=0.0, lt=1.0),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    if not settings.TELEGRAM_CHAT_ID:
+        return {
+            "status": "error",
+            "message": "TELEGRAM_CHAT_ID is not configured",
+        }
+
+    notification_service = NotificationService(db)
+    text = notification_service.format_last_signal_message(
+        symbol=symbol,
+        timeframe=timeframe,
+        lag_periods=lag_periods,
+        future_steps=future_steps,
+        buy_threshold=buy_threshold,
+        sell_threshold=sell_threshold,
+    )
+
+    telegram_service = TelegramService()
+    asyncio.run(
+        telegram_service.send_message(
+            chat_id=int(settings.TELEGRAM_CHAT_ID),
+            text=text,
+        )
+    )
+
+    return {
+        "status": "ok",
+        "message": "Last signal sent to Telegram",
+    }
+
+
+@app.post("/telegram/send/last-signal-if-actionable")
+def send_last_signal_if_actionable(
+    symbol: str = Query(default="BTC/USDT"),
+    timeframe: str = Query(default="5m"),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    if not settings.TELEGRAM_CHAT_ID:
+        return {
+            "status": "error",
+            "message": "TELEGRAM_CHAT_ID is not configured",
+        }
+
+    notification_service = NotificationService(db)
+    should_send, text = (
+        notification_service.get_last_saved_signal_message_if_actionable(
+            symbol=symbol,
+            timeframe=timeframe,
+        )
+    )
+
+    if not should_send:
+        return {
+            "status": "ok",
+            "sent": False,
+            "message": text,
+        }
+
+    telegram_service = TelegramService()
+    asyncio.run(
+        telegram_service.send_message(
+            chat_id=int(settings.TELEGRAM_CHAT_ID),
+            text=text,
+        )
+    )
+
+    return {
+        "status": "ok",
+        "sent": True,
+        "message": "Telegram notification sent",
+    }
+
+
+@app.post("/ml/retrain")
+def retrain_ml_model(
+    symbol: str = Query(default="BTC/USDT"),
+    timeframe: str = Query(default="5m"),
+    lag_periods: int = Query(default=3, ge=1, le=20),
+    future_steps: int = Query(default=3, ge=1, le=20),
+    test_size: float = Query(default=0.2, gt=0.0, lt=0.5),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    service = MLModelService(db)
+    return service.train_logistic_regression(
+        symbol=symbol,
+        timeframe=timeframe,
+        lag_periods=lag_periods,
+        future_steps=future_steps,
+        test_size=test_size,
     )

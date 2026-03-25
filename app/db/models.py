@@ -94,3 +94,26 @@ class PortfolioState(Base):
     usdt_balance = Column(Float, nullable=False, default=1000.0)
     asset_balance = Column(Float, nullable=False, default=0.0)
     updated_at = Column(BigInteger, nullable=False)
+
+
+class ModelTrainingRun(Base):
+    __tablename__ = "model_training_runs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    model_type = Column(String, nullable=False, index=True)
+    symbol = Column(String, nullable=False, index=True)
+    timeframe = Column(String, nullable=False, index=True)
+
+    rows = Column(Integer, nullable=False)
+    train_rows = Column(Integer, nullable=False)
+    test_rows = Column(Integer, nullable=False)
+
+    lag_periods = Column(Integer, nullable=False)
+    future_steps = Column(Integer, nullable=False)
+
+    accuracy = Column(Float, nullable=True)
+    precision = Column(Float, nullable=True)
+    recall = Column(Float, nullable=True)
+
+    model_path = Column(String, nullable=True)
+    created_at = Column(BigInteger, nullable=False, index=True)

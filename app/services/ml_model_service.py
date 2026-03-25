@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import joblib
@@ -14,6 +15,7 @@ from sklearn.metrics import (
 from sklearn.model_selection import train_test_split
 from sqlalchemy.orm import Session
 
+from app.db.models import ModelTrainingRun
 from app.services.ml_dataset_service import MLDatasetService
 
 
@@ -99,6 +101,26 @@ class MLModelService:
         joblib.dump(model, self.model_path)
         joblib.dump(feature_columns, self.features_path)
 
+        training_run = ModelTrainingRun(
+            model_type="LogisticRegression",
+            symbol=symbol,
+            timeframe=timeframe,
+            rows=len(df),
+            train_rows=len(X_train),
+            test_rows=len(X_test),
+            lag_periods=lag_periods,
+            future_steps=future_steps,
+            accuracy=float(accuracy),
+            precision=float(precision),
+            recall=float(recall),
+            model_path=str(self.model_path),
+            created_at=int(time.time() * 1000),
+        )
+
+        self.db.add(training_run)
+        self.db.commit()
+        self.db.refresh(training_run)
+
         return {
             "status": "ok",
             "model_type": "LogisticRegression",
@@ -117,6 +139,7 @@ class MLModelService:
             },
             "classification_report": report,
             "model_path": str(self.model_path),
+            "training_run_id": training_run.id,
         }
 
     def load_model(self):
@@ -159,6 +182,18 @@ class MLModelService:
             "close": float(latest_row["close"]),
             "symbol": str(latest_row["symbol"]),
             "timeframe": str(latest_row["timeframe"]),
+            "rsi": float(latest_row["rsi"])
+            if "rsi" in latest_row and pd.notna(latest_row["rsi"])
+            else None,
+            "ema_fast": float(latest_row["ema_fast"])
+            if "ema_fast" in latest_row and pd.notna(latest_row["ema_fast"])
+            else None,
+            "ema_slow": float(latest_row["ema_slow"])
+            if "ema_slow" in latest_row and pd.notna(latest_row["ema_slow"])
+            else None,
+            "macd": float(latest_row["macd"])
+            if "macd" in latest_row and pd.notna(latest_row["macd"])
+            else None,
         }
 
         return X_latest, meta
@@ -192,6 +227,10 @@ class MLModelService:
             "timeframe": timeframe,
             "timestamp": meta["timestamp"],
             "close": meta["close"],
+            "rsi": meta["rsi"],
+            "ema_fast": meta["ema_fast"],
+            "ema_slow": meta["ema_slow"],
+            "macd": meta["macd"],
             "prediction": int(prediction),
             "probability_up": probability_up,
             "probability_down": probability_down,
@@ -220,3 +259,39 @@ class MLModelService:
         y = df["target"]
 
         return X, y, df
+
+    def get_recent_training_runs(
+        self,
+        symbol: str | None = None,
+        timeframe: str | None = None,
+        limit: int = 20,
+    ) -> list[dict[str, object]]:
+        query = self.db.query(ModelTrainingRun)
+
+        if symbol:
+            query = query.filter(ModelTrainingRun.symbol == symbol)
+
+        if timeframe:
+            query = query.filter(ModelTrainingRun.timeframe == timeframe)
+
+        runs = query.order_by(ModelTrainingRun.created_at.desc()).limit(limit).all()
+
+        return [
+            {
+                "id": run.id,
+                "model_type": run.model_type,
+                "symbol": run.symbol,
+                "timeframe": run.timeframe,
+                "rows": run.rows,
+                "train_rows": run.train_rows,
+                "test_rows": run.test_rows,
+                "lag_periods": run.lag_periods,
+                "future_steps": run.future_steps,
+                "accuracy": run.accuracy,
+                "precision": run.precision,
+                "recall": run.recall,
+                "model_path": run.model_path,
+                "created_at": run.created_at,
+            }
+            for run in runs
+        ]

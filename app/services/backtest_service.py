@@ -107,7 +107,6 @@ class BacktestService:
         sell_trades = [trade for trade in trades if trade["side"] == "SELL"]
         winning_sells = 0
 
-        # Упрощённый winrate:
         # считаем SELL успешным, если финальный баланс после стратегии не ниже начального
         if final_balance > initial_usdt:
             winning_sells = len(sell_trades)
