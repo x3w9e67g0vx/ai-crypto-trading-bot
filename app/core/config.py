@@ -16,6 +16,7 @@ class Settings:
     DEFAULT_SYMBOL: str = os.getenv("DEFAULT_SYMBOL", "BTC/USDT")
     DEFAULT_TIMEFRAME: str = os.getenv("DEFAULT_TIMEFRAME", "5m")
     OHLCV_LIMIT: int = int(os.getenv("OHLCV_LIMIT", "100"))
+    TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
 
     @property
     def database_url(self) -> str:
