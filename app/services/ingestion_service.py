@@ -11,6 +11,21 @@ class IngestionService:
         self.db = db
         self.market_data_service = MarketDataService()
 
+    def get_last_candle(
+        self,
+        symbol: str,
+        timeframe: str,
+    ) -> Candle | None:
+        return (
+            self.db.query(Candle)
+            .filter(
+                Candle.symbol == symbol,
+                Candle.timeframe == timeframe,
+            )
+            .order_by(Candle.timestamp.desc())
+            .first()
+        )
+
     def ingest_ohlcv(
         self,
         symbol: str,
@@ -60,4 +75,69 @@ class IngestionService:
             "inserted": inserted,
             "skipped": skipped,
             "total": len(candles),
+        }
+
+    def update_ohlcv(
+        self,
+        symbol: str,
+        timeframe: str,
+        limit: int = 100,
+    ) -> dict[str, int | str | None]:
+        last_candle = self.get_last_candle(symbol=symbol, timeframe=timeframe)
+
+        since = None
+        if last_candle is not None:
+            since = last_candle.timestamp + 1
+
+        candles = self.market_data_service.get_ohlcv(
+            symbol=symbol,
+            timeframe=timeframe,
+            limit=limit,
+            since=since,
+        )
+
+        inserted = 0
+        skipped = 0
+
+        for candle in candles:
+            if last_candle is not None and candle["timestamp"] <= last_candle.timestamp:
+                skipped += 1
+                continue
+
+            exists = (
+                self.db.query(Candle)
+                .filter(
+                    Candle.symbol == symbol,
+                    Candle.timeframe == timeframe,
+                    Candle.timestamp == candle["timestamp"],
+                )
+                .first()
+            )
+
+            if exists:
+                skipped += 1
+                continue
+
+            db_candle = Candle(
+                symbol=symbol,
+                timeframe=timeframe,
+                timestamp=candle["timestamp"],
+                open=candle["open"],
+                high=candle["high"],
+                low=candle["low"],
+                close=candle["close"],
+                volume=candle["volume"],
+            )
+            self.db.add(db_candle)
+            inserted += 1
+
+        self.db.commit()
+
+        return {
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "last_timestamp": last_candle.timestamp if last_candle else None,
+            "inserted": inserted,
+            "skipped": skipped,
+            "fetched": len(candles),
         }

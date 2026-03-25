@@ -24,9 +24,11 @@ class ExchangeService:
         symbol: str | None = None,
         timeframe: str | None = None,
         limit: int | None = None,
+        since: int | None = None,
     ) -> list[list[float]]:
         return self.exchange.fetch_ohlcv(
             symbol=symbol or settings.DEFAULT_SYMBOL,
             timeframe=timeframe or settings.DEFAULT_TIMEFRAME,
             limit=limit or settings.OHLCV_LIMIT,
+            since=since,
         )

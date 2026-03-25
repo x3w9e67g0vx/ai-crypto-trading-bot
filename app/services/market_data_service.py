@@ -18,11 +18,13 @@ class MarketDataService:
         symbol: str,
         timeframe: str,
         limit: int = 100,
+        since: int | None = None,
     ) -> list[dict[str, Any]]:
         raw_ohlcv = self.exchange_service.fetch_ohlcv(
             symbol=symbol,
             timeframe=timeframe,
             limit=limit,
+            since=since,
         )
 
         return [

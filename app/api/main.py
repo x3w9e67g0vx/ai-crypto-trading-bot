@@ -76,3 +76,19 @@ def ingest_ohlcv(
         "timeframe": timeframe,
         **result,
     }
+
+
+@app.post("/update/ohlcv")
+def update_ohlcv(
+    symbol: str = Query(default="BTC/USDT"),
+    timeframe: str = Query(default="5m"),
+    limit: int = Query(default=100, ge=1, le=1000),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    service = IngestionService(db)
+    result = service.update_ohlcv(symbol=symbol, timeframe=timeframe, limit=limit)
+
+    return {
+        "status": "ok",
+        **result,
+    }
