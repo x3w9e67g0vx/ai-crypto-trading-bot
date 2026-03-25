@@ -52,6 +52,14 @@ class Indicator(Base):
 
 class Signal(Base):
     __tablename__ = "signals"
+    __table_args__ = (
+        UniqueConstraint(
+            "symbol",
+            "timeframe",
+            "timestamp",
+            name="uq_signal_symbol_timeframe_timestamp",
+        ),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     symbol = Column(String, nullable=False, index=True)

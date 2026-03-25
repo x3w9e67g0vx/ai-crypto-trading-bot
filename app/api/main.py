@@ -13,6 +13,7 @@ from app.services.ingestion_service import IngestionService
 from app.services.market_data_service import MarketDataService
 from app.services.ml_dataset_service import MLDatasetService
 from app.services.ml_model_service import MLModelService
+from app.services.strategy_service import StrategyService
 
 app = FastAPI(title="AI Crypto Trading Bot")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -131,6 +132,47 @@ def predict_latest(
     )
 
 
+@app.get("/strategy/signal/latest")
+def get_latest_signal(
+    symbol: str = Query(default="BTC/USDT"),
+    timeframe: str = Query(default="5m"),
+    lag_periods: int = Query(default=3, ge=1, le=20),
+    future_steps: int = Query(default=3, ge=1, le=20),
+    buy_threshold: float = Query(default=0.7, gt=0.0, lt=1.0),
+    sell_threshold: float = Query(default=0.3, gt=0.0, lt=1.0),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    service = StrategyService(db)
+    return service.generate_signal(
+        symbol=symbol,
+        timeframe=timeframe,
+        lag_periods=lag_periods,
+        future_steps=future_steps,
+        buy_threshold=buy_threshold,
+        sell_threshold=sell_threshold,
+    )
+
+
+@app.get("/strategy/signals")
+def get_recent_signals(
+    symbol: str | None = Query(default=None),
+    timeframe: str | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    service = StrategyService(db)
+    signals = service.get_recent_signals(
+        symbol=symbol,
+        timeframe=timeframe,
+        limit=limit,
+    )
+
+    return {
+        "count": len(signals),
+        "signals": signals,
+    }
+
+
 @app.post("/ingest/ohlcv")
 def ingest_ohlcv(
     symbol: str = Query(default="BTC/USDT"),
@@ -199,3 +241,24 @@ def train_ml_model(
     )
 
     return result
+
+
+@app.post("/strategy/signal/generate-and-save")
+def generate_and_save_signal(
+    symbol: str = Query(default="BTC/USDT"),
+    timeframe: str = Query(default="5m"),
+    lag_periods: int = Query(default=3, ge=1, le=20),
+    future_steps: int = Query(default=3, ge=1, le=20),
+    buy_threshold: float = Query(default=0.7, gt=0.0, lt=1.0),
+    sell_threshold: float = Query(default=0.3, gt=0.0, lt=1.0),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    service = StrategyService(db)
+    return service.generate_and_save_signal(
+        symbol=symbol,
+        timeframe=timeframe,
+        lag_periods=lag_periods,
+        future_steps=future_steps,
+        buy_threshold=buy_threshold,
+        sell_threshold=sell_threshold,
+    )
