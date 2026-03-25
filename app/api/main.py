@@ -12,6 +12,7 @@ from app.services.indicator_service import IndicatorService
 from app.services.ingestion_service import IngestionService
 from app.services.market_data_service import MarketDataService
 from app.services.ml_dataset_service import MLDatasetService
+from app.services.ml_model_service import MLModelService
 
 app = FastAPI(title="AI Crypto Trading Bot")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -160,3 +161,24 @@ def calculate_indicators(
         "status": "ok",
         **result,
     }
+
+
+@app.post("/ml/train")
+def train_ml_model(
+    symbol: str = Query(default="BTC/USDT"),
+    timeframe: str = Query(default="5m"),
+    lag_periods: int = Query(default=3, ge=1, le=20),
+    future_steps: int = Query(default=3, ge=1, le=20),
+    test_size: float = Query(default=0.2, gt=0.0, lt=0.5),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    service = MLModelService(db)
+    result = service.train_logistic_regression(
+        symbol=symbol,
+        timeframe=timeframe,
+        lag_periods=lag_periods,
+        future_steps=future_steps,
+        test_size=test_size,
+    )
+
+    return result

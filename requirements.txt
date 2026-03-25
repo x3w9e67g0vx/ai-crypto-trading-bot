@@ -17,6 +17,7 @@ frozenlist==1.8.0
 greenlet==3.3.2
 h11==0.16.0
 idna==3.11
+joblib==1.5.3
 multidict==6.7.1
 numpy==2.4.3
 pandas==3.0.1
@@ -29,10 +30,13 @@ pydantic_core==2.41.5
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
 requests==2.32.5
+scikit-learn==1.8.0
+scipy==1.17.1
 setuptools==82.0.1
 six==1.17.0
 SQLAlchemy==2.0.48
 starlette==1.0.0
+threadpoolctl==3.6.0
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 urllib3==2.6.3
