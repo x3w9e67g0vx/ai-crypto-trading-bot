@@ -196,3 +196,27 @@ class MLModelService:
             "probability_up": probability_up,
             "probability_down": probability_down,
         }
+
+    def prepare_features_and_target(
+        self,
+        symbol: str,
+        timeframe: str,
+        lag_periods: int = 3,
+        future_steps: int = 3,
+    ) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame]:
+        df = self.dataset_service.prepare_dataset(
+            symbol=symbol,
+            timeframe=timeframe,
+            lag_periods=lag_periods,
+            future_steps=future_steps,
+            dropna=True,
+        )
+
+        if df.empty:
+            raise ValueError("Dataset is empty")
+
+        feature_columns = self.load_feature_columns()
+        X = df[feature_columns]
+        y = df["target"]
+
+        return X, y, df
