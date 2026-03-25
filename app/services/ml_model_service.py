@@ -130,3 +130,69 @@ class MLModelService:
             raise FileNotFoundError("Feature list file not found")
 
         return joblib.load(self.features_path)
+
+    def get_latest_features(
+        self,
+        symbol: str,
+        timeframe: str,
+        lag_periods: int = 3,
+        future_steps: int = 3,
+    ) -> tuple[pd.DataFrame, dict[str, object]]:
+        df = self.dataset_service.prepare_dataset(
+            symbol=symbol,
+            timeframe=timeframe,
+            lag_periods=lag_periods,
+            future_steps=future_steps,
+            dropna=True,
+        )
+
+        if df.empty:
+            raise ValueError("Dataset is empty")
+
+        feature_columns = self.load_feature_columns()
+
+        latest_row = df.iloc[-1].copy()
+        X_latest = df[feature_columns].tail(1)
+
+        meta = {
+            "timestamp": int(latest_row["timestamp"]),
+            "close": float(latest_row["close"]),
+            "symbol": str(latest_row["symbol"]),
+            "timeframe": str(latest_row["timeframe"]),
+        }
+
+        return X_latest, meta
+
+    def predict_latest(
+        self,
+        symbol: str,
+        timeframe: str,
+        lag_periods: int = 3,
+        future_steps: int = 3,
+    ) -> dict[str, object]:
+        model = self.load_model()
+
+        X_latest, meta = self.get_latest_features(
+            symbol=symbol,
+            timeframe=timeframe,
+            lag_periods=lag_periods,
+            future_steps=future_steps,
+        )
+
+        prediction = model.predict(X_latest)[0]
+        probabilities = model.predict_proba(X_latest)[0]
+
+        probability_down = float(probabilities[0])
+        probability_up = float(probabilities[1])
+
+        return {
+            "status": "ok",
+            "model_type": "LogisticRegression",
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "timestamp": meta["timestamp"],
+            "close": meta["close"],
+            "prediction": int(prediction),
+            "probability_up": probability_up,
+            "probability_down": probability_down,
+        }

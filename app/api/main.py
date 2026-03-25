@@ -114,6 +114,23 @@ def ml_dataset_preview(
     }
 
 
+@app.get("/ml/predict/latest")
+def predict_latest(
+    symbol: str = Query(default="BTC/USDT"),
+    timeframe: str = Query(default="5m"),
+    lag_periods: int = Query(default=3, ge=1, le=20),
+    future_steps: int = Query(default=3, ge=1, le=20),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    service = MLModelService(db)
+    return service.predict_latest(
+        symbol=symbol,
+        timeframe=timeframe,
+        lag_periods=lag_periods,
+        future_steps=future_steps,
+    )
+
+
 @app.post("/ingest/ohlcv")
 def ingest_ohlcv(
     symbol: str = Query(default="BTC/USDT"),
