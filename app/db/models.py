@@ -1,10 +1,26 @@
-from sqlalchemy import BigInteger, Column, Float, ForeignKey, Integer, String
+from sqlalchemy import (
+    BigInteger,
+    Column,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 
 from app.db.base import Base
 
 
 class Candle(Base):
     __tablename__ = "candles"
+    __table_args__ = (
+        UniqueConstraint(
+            "symbol",
+            "timeframe",
+            "timestamp",
+            name="uq_candle_symbol_timeframe_timestamp",
+        ),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     symbol = Column(String, nullable=False, index=True)

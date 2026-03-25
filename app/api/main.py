@@ -1,11 +1,14 @@
-from fastapi import FastAPI, Query
+from fastapi import Depends, FastAPI, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from app.db import models
 from app.db.base import Base
+from app.db.dependencies import get_db
 from app.db.session import engine
+from app.services.ingestion_service import IngestionService
 from app.services.market_data_service import MarketDataService
 
 app = FastAPI(title="AI Crypto Trading Bot")
@@ -54,4 +57,22 @@ def get_ohlcv(
         "timeframe": timeframe,
         "count": len(candles),
         "candles": candles,
+    }
+
+
+@app.post("/ingest/ohlcv")
+def ingest_ohlcv(
+    symbol: str = Query(default="BTC/USDT"),
+    timeframe: str = Query(default="5m"),
+    limit: int = Query(default=100, ge=1, le=1000),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    service = IngestionService(db)
+    result = service.ingest_ohlcv(symbol=symbol, timeframe=timeframe, limit=limit)
+
+    return {
+        "status": "ok",
+        "symbol": symbol,
+        "timeframe": timeframe,
+        **result,
     }
