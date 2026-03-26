@@ -1,4 +1,5 @@
 import asyncio
+from statistics import mode
 
 from fastapi import Depends, FastAPI, Query
 from fastapi.responses import FileResponse
@@ -79,6 +80,7 @@ def ml_dataset_preview(
     future_steps: int = Query(default=1, ge=1, le=20),
     limit: int = Query(default=10, ge=1, le=100),
     db: Session = Depends(get_db),
+    target_threshold: float = Query(default=0.002, ge=0.0, lt=1.0),
 ) -> dict[str, object]:
     service = MLDatasetService(db)
     df = service.prepare_dataset(
@@ -86,6 +88,7 @@ def ml_dataset_preview(
         timeframe=timeframe,
         lag_periods=lag_periods,
         future_steps=future_steps,
+        target_threshold=target_threshold,
         dropna=True,
     )
 
@@ -129,6 +132,7 @@ def predict_latest(
     lag_periods: int = Query(default=3, ge=1, le=20),
     future_steps: int = Query(default=3, ge=1, le=20),
     db: Session = Depends(get_db),
+    model_type: str = Query(default="logistic_regression"),
 ) -> dict[str, object]:
     service = MLModelService(db)
     return service.predict_latest(
@@ -136,6 +140,7 @@ def predict_latest(
         timeframe=timeframe,
         lag_periods=lag_periods,
         future_steps=future_steps,
+        model_type=model_type,
     )
 
 
@@ -145,10 +150,15 @@ def get_latest_signal(
     timeframe: str = Query(default="5m"),
     lag_periods: int = Query(default=3, ge=1, le=20),
     future_steps: int = Query(default=3, ge=1, le=20),
-    buy_threshold: float = Query(default=0.7, gt=0.0, lt=1.0),
-    sell_threshold: float = Query(default=0.3, gt=0.0, lt=1.0),
+    target_threshold: float = Query(default=0.002, ge=0.0, lt=1.0),
+    buy_threshold: float = Query(default=0.6, gt=0.0, lt=1.0),
+    sell_threshold: float = Query(default=0.4, gt=0.0, lt=1.0),
     cooldown_ms: int = Query(default=900000, ge=0),
     use_trend_filter: bool = Query(default=True),
+    use_rsi_filter: bool = Query(default=True),
+    rsi_overbought: float = Query(default=70.0, gt=0.0, lt=100.0),
+    rsi_oversold: float = Query(default=30.0, gt=0.0, lt=100.0),
+    model_type: str = Query(default="logistic_regression"),
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     service = StrategyService(db)
@@ -161,6 +171,11 @@ def get_latest_signal(
         sell_threshold=sell_threshold,
         cooldown_ms=cooldown_ms,
         use_trend_filter=use_trend_filter,
+        use_rsi_filter=use_rsi_filter,
+        rsi_overbought=rsi_overbought,
+        rsi_oversold=rsi_oversold,
+        model_type=model_type,
+        target_threshold=target_threshold,
     )
 
 
@@ -312,13 +327,17 @@ def train_ml_model(
     future_steps: int = Query(default=3, ge=1, le=20),
     test_size: float = Query(default=0.2, gt=0.0, lt=0.5),
     db: Session = Depends(get_db),
+    model_type: str = Query(default="logistic_regression"),
+    target_threshold: float = Query(default=0.002, ge=0.0, lt=1.0),
 ) -> dict[str, object]:
     service = MLModelService(db)
-    result = service.train_logistic_regression(
+    result = service.train_model(
+        model_type=model_type,
         symbol=symbol,
         timeframe=timeframe,
         lag_periods=lag_periods,
         future_steps=future_steps,
+        target_threshold=target_threshold,
         test_size=test_size,
     )
 
@@ -331,10 +350,15 @@ def generate_and_save_signal(
     timeframe: str = Query(default="5m"),
     lag_periods: int = Query(default=3, ge=1, le=20),
     future_steps: int = Query(default=3, ge=1, le=20),
-    buy_threshold: float = Query(default=0.7, gt=0.0, lt=1.0),
-    sell_threshold: float = Query(default=0.3, gt=0.0, lt=1.0),
+    target_threshold: float = Query(default=0.002, ge=0.0, lt=1.0),
+    buy_threshold: float = Query(default=0.6, gt=0.0, lt=1.0),
+    sell_threshold: float = Query(default=0.4, gt=0.0, lt=1.0),
     cooldown_ms: int = Query(default=900000, ge=0),
     use_trend_filter: bool = Query(default=True),
+    use_rsi_filter: bool = Query(default=True),
+    rsi_overbought: float = Query(default=70.0, gt=0.0, lt=100.0),
+    rsi_oversold: float = Query(default=30.0, gt=0.0, lt=100.0),
+    model_type: str = Query(default="logistic_regression"),
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     service = StrategyService(db)
@@ -347,6 +371,11 @@ def generate_and_save_signal(
         sell_threshold=sell_threshold,
         cooldown_ms=cooldown_ms,
         use_trend_filter=use_trend_filter,
+        use_rsi_filter=use_rsi_filter,
+        rsi_overbought=rsi_overbought,
+        rsi_oversold=rsi_oversold,
+        model_type=model_type,
+        target_threshold=target_threshold,
     )
 
 
@@ -465,12 +494,35 @@ def retrain_ml_model(
     future_steps: int = Query(default=3, ge=1, le=20),
     test_size: float = Query(default=0.2, gt=0.0, lt=0.5),
     db: Session = Depends(get_db),
+    model_type: str = Query(default="logistic_regression"),
+    target_threshold: float = Query(default=0.002, ge=0.0, lt=1.0),
 ) -> dict[str, object]:
     service = MLModelService(db)
-    return service.train_logistic_regression(
+    return service.train_model(
+        model_type=model_type,
         symbol=symbol,
         timeframe=timeframe,
         lag_periods=lag_periods,
         future_steps=future_steps,
+        target_threshold=target_threshold,
         test_size=test_size,
+    )
+
+
+@app.post("/ingest/backfill")
+def backfill_ohlcv(
+    symbol: str = Query(default="BTC/USDT"),
+    timeframe: str = Query(default="5m"),
+    since: int = Query(..., description="Unix timestamp in milliseconds"),
+    batch_limit: int = Query(default=500, ge=1, le=1000),
+    max_batches: int = Query(default=10, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    service = IngestionService(db)
+    return service.backfill_ohlcv(
+        symbol=symbol,
+        timeframe=timeframe,
+        since=since,
+        batch_limit=batch_limit,
+        max_batches=max_batches,
     )

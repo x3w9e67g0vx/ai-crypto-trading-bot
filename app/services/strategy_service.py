@@ -32,48 +32,81 @@ class StrategyService:
         timeframe: str,
         lag_periods: int = 3,
         future_steps: int = 3,
-        buy_threshold: float = 0.7,
-        sell_threshold: float = 0.3,
+        buy_threshold: float = 0.6,
+        sell_threshold: float = 0.4,
         cooldown_ms: int = 15 * 60 * 1000,
         use_trend_filter: bool = True,
+        use_rsi_filter: bool = True,
+        rsi_overbought: float = 70.0,
+        rsi_oversold: float = 30.0,
+        model_type: str = "logistic_regression",
+        target_threshold: float = 0.002,
     ) -> dict[str, object]:
         prediction_result = self.ml_model_service.predict_latest(
             symbol=symbol,
             timeframe=timeframe,
             lag_periods=lag_periods,
             future_steps=future_steps,
+            model_type=model_type,
+            target_threshold=target_threshold,
         )
 
         probability_up = float(prediction_result["probability_up"])
         probability_down = float(prediction_result["probability_down"])
         close_price = float(prediction_result["close"])
         timestamp = int(prediction_result["timestamp"])
+
+        rsi = prediction_result.get("rsi")
         ema_fast = prediction_result.get("ema_fast")
+        ema_slow = prediction_result.get("ema_slow")
+        macd = prediction_result.get("macd")
 
         signal = "HOLD"
-        reasons = []
+        reasons: list[str] = []
 
-        # Базовая ML-логика
-        if probability_up >= buy_threshold:
-            signal = "BUY"
+        # Базовый кандидат от модели
+        buy_candidate = probability_up >= buy_threshold
+        sell_candidate = probability_up <= sell_threshold
+
+        if buy_candidate:
             reasons.append("probability_up_above_buy_threshold")
-        elif probability_up <= sell_threshold:
-            signal = "SELL"
+        elif sell_candidate:
             reasons.append("probability_up_below_sell_threshold")
         else:
             reasons.append("probability_in_hold_zone")
 
         # Trend filter
-        if use_trend_filter and ema_fast is not None:
+        if use_trend_filter and ema_fast is not None and ema_slow is not None:
             ema_fast = float(ema_fast)
+            ema_slow = float(ema_slow)
 
-            if signal == "BUY" and close_price <= ema_fast:
-                signal = "HOLD"
+            if buy_candidate and not (ema_fast > ema_slow):
+                buy_candidate = False
                 reasons.append("buy_blocked_by_trend_filter")
 
-            if signal == "SELL" and close_price >= ema_fast:
-                signal = "HOLD"
+            if sell_candidate and not (ema_fast < ema_slow):
+                sell_candidate = False
                 reasons.append("sell_blocked_by_trend_filter")
+
+        # RSI filter
+        if use_rsi_filter and rsi is not None:
+            rsi = float(rsi)
+
+            if buy_candidate and not (rsi < rsi_overbought):
+                buy_candidate = False
+                reasons.append("buy_blocked_by_rsi_filter")
+
+            if sell_candidate and not (rsi > rsi_oversold):
+                sell_candidate = False
+                reasons.append("sell_blocked_by_rsi_filter")
+
+        # Final signal decision
+        if buy_candidate:
+            signal = "BUY"
+        elif sell_candidate:
+            signal = "SELL"
+        else:
+            signal = "HOLD"
 
         # Cooldown
         last_signal = self.get_last_saved_signal(symbol=symbol, timeframe=timeframe)
@@ -92,15 +125,20 @@ class StrategyService:
             "prediction": prediction_result["prediction"],
             "probability_up": probability_up,
             "probability_down": probability_down,
-            "rsi": prediction_result.get("rsi"),
-            "ema_fast": prediction_result.get("ema_fast"),
-            "ema_slow": prediction_result.get("ema_slow"),
-            "macd": prediction_result.get("macd"),
+            "rsi": rsi,
+            "ema_fast": ema_fast,
+            "ema_slow": ema_slow,
+            "macd": macd,
             "signal": signal,
+            "model_type": model_type,
+            "target_threshold": target_threshold,
             "buy_threshold": buy_threshold,
             "sell_threshold": sell_threshold,
             "cooldown_ms": cooldown_ms,
             "use_trend_filter": use_trend_filter,
+            "use_rsi_filter": use_rsi_filter,
+            "rsi_overbought": rsi_overbought,
+            "rsi_oversold": rsi_oversold,
             "reasons": reasons,
         }
 
@@ -163,10 +201,15 @@ class StrategyService:
         timeframe: str,
         lag_periods: int = 3,
         future_steps: int = 3,
-        buy_threshold: float = 0.7,
-        sell_threshold: float = 0.3,
+        buy_threshold: float = 0.6,
+        sell_threshold: float = 0.4,
         cooldown_ms: int = 15 * 60 * 1000,
         use_trend_filter: bool = True,
+        use_rsi_filter: bool = True,
+        rsi_overbought: float = 70.0,
+        rsi_oversold: float = 30.0,
+        model_type: str = "logistic_regression",
+        target_threshold: float = 0.002,
     ) -> dict[str, object]:
         signal_data = self.generate_signal(
             symbol=symbol,
@@ -177,6 +220,11 @@ class StrategyService:
             sell_threshold=sell_threshold,
             cooldown_ms=cooldown_ms,
             use_trend_filter=use_trend_filter,
+            use_rsi_filter=use_rsi_filter,
+            rsi_overbought=rsi_overbought,
+            rsi_oversold=rsi_oversold,
+            model_type=model_type,
+            target_threshold=target_threshold,
         )
 
         saved_signal = self.save_signal(signal_data)

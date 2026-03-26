@@ -31,11 +31,13 @@ class IngestionService:
         symbol: str,
         timeframe: str,
         limit: int = 100,
+        since: int | None = None,
     ) -> dict[str, int]:
         candles = self.market_data_service.get_ohlcv(
             symbol=symbol,
             timeframe=timeframe,
             limit=limit,
+            since=since,
         )
 
         inserted = 0
@@ -140,4 +142,67 @@ class IngestionService:
             "inserted": inserted,
             "skipped": skipped,
             "fetched": len(candles),
+        }
+
+    def backfill_ohlcv(
+        self,
+        symbol: str,
+        timeframe: str,
+        since: int,
+        batch_limit: int = 500,
+        max_batches: int = 10,
+    ) -> dict[str, object]:
+        total_inserted = 0
+        total_skipped = 0
+        total_fetched = 0
+        current_since = since
+        batches_completed = 0
+        last_timestamp = None
+
+        for _ in range(max_batches):
+            result = self.ingest_ohlcv(
+                symbol=symbol,
+                timeframe=timeframe,
+                limit=batch_limit,
+                since=current_since,
+            )
+
+            fetched = int(result["total"])
+            inserted = int(result["inserted"])
+            skipped = int(result["skipped"])
+
+            total_fetched += fetched
+            total_inserted += inserted
+            total_skipped += skipped
+            batches_completed += 1
+
+            candles = self.market_data_service.get_ohlcv(
+                symbol=symbol,
+                timeframe=timeframe,
+                limit=batch_limit,
+                since=current_since,
+            )
+
+            if not candles:
+                break
+
+            last_timestamp = candles[-1]["timestamp"]
+
+            # если биржа перестала давать новые свечи
+            if len(candles) < batch_limit:
+                break
+
+            current_since = last_timestamp + 1
+
+        return {
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "since": since,
+            "batch_limit": batch_limit,
+            "max_batches": max_batches,
+            "batches_completed": batches_completed,
+            "total_fetched": total_fetched,
+            "total_inserted": total_inserted,
+            "total_skipped": total_skipped,
+            "last_timestamp": last_timestamp,
         }

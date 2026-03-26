@@ -5,6 +5,7 @@ from pathlib import Path
 
 import joblib
 import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     accuracy_score,
@@ -27,8 +28,11 @@ class MLModelService:
         self.model_dir = Path("artifacts/models")
         self.model_dir.mkdir(parents=True, exist_ok=True)
 
-        self.model_path = self.model_dir / "logistic_regression_model.joblib"
-        self.features_path = self.model_dir / "logistic_regression_features.joblib"
+    def get_model_path(self, model_type: str) -> Path:
+        return self.model_dir / f"{model_type}_model.joblib"
+
+    def get_features_path(self, model_type: str) -> Path:
+        return self.model_dir / f"{model_type}_features.joblib"
 
     def get_feature_columns(self, df: pd.DataFrame) -> list[str]:
         exclude_columns = {
@@ -37,25 +41,29 @@ class MLModelService:
             "symbol",
             "timeframe",
             "future_close",
+            "future_return",
             "target",
         }
 
         return [col for col in df.columns if col not in exclude_columns]
 
-    def train_logistic_regression(
+    def train_model(
         self,
+        model_type: str,
         symbol: str,
         timeframe: str,
         lag_periods: int = 3,
         future_steps: int = 1,
         test_size: float = 0.2,
         random_state: int = 42,
+        target_threshold: float = 0.002,
     ) -> dict[str, object]:
         df = self.dataset_service.prepare_dataset(
             symbol=symbol,
             timeframe=timeframe,
             lag_periods=lag_periods,
             future_steps=future_steps,
+            target_threshold=target_threshold,
             dropna=True,
         )
 
@@ -66,7 +74,6 @@ class MLModelService:
             }
 
         feature_columns = self.get_feature_columns(df)
-
         X = df[feature_columns]
         y = df["target"]
 
@@ -85,24 +92,47 @@ class MLModelService:
             shuffle=False,
         )
 
-        model = LogisticRegression(max_iter=1000)
-        model.fit(X_train, y_train)
+        if model_type == "logistic_regression":
+            model = LogisticRegression(
+                max_iter=1000,
+                class_weight="balanced",
+            )
+            model_name = "LogisticRegression"
+        elif model_type == "random_forest":
+            model = RandomForestClassifier(
+                n_estimators=200,
+                max_depth=8,
+                min_samples_split=10,
+                min_samples_leaf=5,
+                class_weight="balanced",
+                random_state=random_state,
+                n_jobs=-1,
+            )
+            model_name = "RandomForest"
+        else:
+            return {
+                "status": "error",
+                "message": f"Unsupported model_type: {model_type}",
+            }
 
+        model.fit(X_train, y_train)
         y_pred = model.predict(X_test)
 
         accuracy = accuracy_score(y_test, y_pred)
         precision = precision_score(y_test, y_pred, zero_division=0)
         recall = recall_score(y_test, y_pred, zero_division=0)
-
         report = classification_report(
             y_test, y_pred, output_dict=True, zero_division=0
         )
 
-        joblib.dump(model, self.model_path)
-        joblib.dump(feature_columns, self.features_path)
+        model_path = self.get_model_path(model_type)
+        features_path = self.get_features_path(model_type)
+
+        joblib.dump(model, model_path)
+        joblib.dump(feature_columns, features_path)
 
         training_run = ModelTrainingRun(
-            model_type="LogisticRegression",
+            model_type=model_name,
             symbol=symbol,
             timeframe=timeframe,
             rows=len(df),
@@ -113,7 +143,7 @@ class MLModelService:
             accuracy=float(accuracy),
             precision=float(precision),
             recall=float(recall),
-            model_path=str(self.model_path),
+            model_path=str(model_path),
             created_at=int(time.time() * 1000),
         )
 
@@ -123,7 +153,7 @@ class MLModelService:
 
         return {
             "status": "ok",
-            "model_type": "LogisticRegression",
+            "model_type": model_name,
             "symbol": symbol,
             "timeframe": timeframe,
             "rows": len(df),
@@ -138,21 +168,71 @@ class MLModelService:
                 "recall": recall,
             },
             "classification_report": report,
-            "model_path": str(self.model_path),
+            "model_path": str(model_path),
             "training_run_id": training_run.id,
         }
 
-    def load_model(self):
-        if not self.model_path.exists():
-            raise FileNotFoundError("Model file not found")
+    def train_logistic_regression(
+        self,
+        symbol: str,
+        timeframe: str,
+        lag_periods: int = 3,
+        future_steps: int = 1,
+        test_size: float = 0.2,
+        random_state: int = 42,
+        target_threshold: float = 0.002,
+    ) -> dict[str, object]:
+        return self.train_model(
+            model_type="logistic_regression",
+            symbol=symbol,
+            timeframe=timeframe,
+            lag_periods=lag_periods,
+            future_steps=future_steps,
+            test_size=test_size,
+            random_state=random_state,
+            target_threshold=target_threshold,
+        )
 
-        return joblib.load(self.model_path)
+    def load_model(self, model_type: str = "logistic_regression"):
+        model_path = self.get_model_path(model_type)
+        if not model_path.exists():
+            raise FileNotFoundError(f"Model file not found: {model_path}")
+        return joblib.load(model_path)
 
-    def load_feature_columns(self) -> list[str]:
-        if not self.features_path.exists():
-            raise FileNotFoundError("Feature list file not found")
+    def load_feature_columns(
+        self, model_type: str = "logistic_regression"
+    ) -> list[str]:
+        features_path = self.get_features_path(model_type)
+        if not features_path.exists():
+            raise FileNotFoundError(f"Feature list file not found: {features_path}")
+        return joblib.load(features_path)
 
-        return joblib.load(self.features_path)
+    def prepare_features_and_target(
+        self,
+        symbol: str,
+        timeframe: str,
+        lag_periods: int = 3,
+        future_steps: int = 3,
+        model_type: str = "logistic_regression",
+        target_threshold: float = 0.002,
+    ) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame]:
+        df = self.dataset_service.prepare_dataset(
+            symbol=symbol,
+            timeframe=timeframe,
+            lag_periods=lag_periods,
+            future_steps=future_steps,
+            target_threshold=target_threshold,
+            dropna=True,
+        )
+
+        if df.empty:
+            raise ValueError("Dataset is empty")
+
+        feature_columns = self.load_feature_columns(model_type=model_type)
+        X = df[feature_columns]
+        y = df["target"]
+
+        return X, y, df
 
     def get_latest_features(
         self,
@@ -160,19 +240,22 @@ class MLModelService:
         timeframe: str,
         lag_periods: int = 3,
         future_steps: int = 3,
+        model_type: str = "logistic_regression",
+        target_threshold: float = 0.002,
     ) -> tuple[pd.DataFrame, dict[str, object]]:
         df = self.dataset_service.prepare_dataset(
             symbol=symbol,
             timeframe=timeframe,
             lag_periods=lag_periods,
             future_steps=future_steps,
+            target_threshold=target_threshold,
             dropna=True,
         )
 
         if df.empty:
             raise ValueError("Dataset is empty")
 
-        feature_columns = self.load_feature_columns()
+        feature_columns = self.load_feature_columns(model_type=model_type)
 
         latest_row = df.iloc[-1].copy()
         X_latest = df[feature_columns].tail(1)
@@ -204,14 +287,18 @@ class MLModelService:
         timeframe: str,
         lag_periods: int = 3,
         future_steps: int = 3,
+        model_type: str = "logistic_regression",
+        target_threshold: float = 0.002,
     ) -> dict[str, object]:
-        model = self.load_model()
+        model = self.load_model(model_type=model_type)
 
         X_latest, meta = self.get_latest_features(
             symbol=symbol,
             timeframe=timeframe,
             lag_periods=lag_periods,
             future_steps=future_steps,
+            model_type=model_type,
+            target_threshold=target_threshold,
         )
 
         prediction = model.predict(X_latest)[0]
@@ -222,7 +309,7 @@ class MLModelService:
 
         return {
             "status": "ok",
-            "model_type": "LogisticRegression",
+            "model_type": model_type,
             "symbol": symbol,
             "timeframe": timeframe,
             "timestamp": meta["timestamp"],
@@ -235,30 +322,6 @@ class MLModelService:
             "probability_up": probability_up,
             "probability_down": probability_down,
         }
-
-    def prepare_features_and_target(
-        self,
-        symbol: str,
-        timeframe: str,
-        lag_periods: int = 3,
-        future_steps: int = 3,
-    ) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame]:
-        df = self.dataset_service.prepare_dataset(
-            symbol=symbol,
-            timeframe=timeframe,
-            lag_periods=lag_periods,
-            future_steps=future_steps,
-            dropna=True,
-        )
-
-        if df.empty:
-            raise ValueError("Dataset is empty")
-
-        feature_columns = self.load_feature_columns()
-        X = df[feature_columns]
-        y = df["target"]
-
-        return X, y, df
 
     def get_recent_training_runs(
         self,

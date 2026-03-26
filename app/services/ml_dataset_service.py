@@ -83,14 +83,20 @@ class MLDatasetService:
 
         return df
 
-    def add_target(self, df: pd.DataFrame, future_steps: int = 1) -> pd.DataFrame:
+    def add_target(
+        self,
+        df: pd.DataFrame,
+        future_steps: int = 1,
+        target_threshold: float = 0.002,
+    ) -> pd.DataFrame:
         if df.empty:
             return df
 
         df = df.copy()
 
         df["future_close"] = df["close"].shift(-future_steps)
-        df["target"] = (df["future_close"] > df["close"]).astype(int)
+        df["future_return"] = (df["future_close"] - df["close"]) / df["close"]
+        df["target"] = (df["future_return"] > target_threshold).astype(int)
 
         return df
 
@@ -100,6 +106,7 @@ class MLDatasetService:
         timeframe: str,
         lag_periods: int = 3,
         future_steps: int = 1,
+        target_threshold: float = 0.002,
         dropna: bool = True,
     ) -> pd.DataFrame:
         df = self.load_base_dataframe(symbol=symbol, timeframe=timeframe)
@@ -109,7 +116,12 @@ class MLDatasetService:
 
         df = self.add_basic_features(df)
         df = self.add_lag_features(df, lag_periods=lag_periods)
-        df = self.add_target(df, future_steps=future_steps)
+
+        df = self.add_target(
+            df,
+            future_steps=future_steps,
+            target_threshold=target_threshold,
+        )
 
         if dropna:
             df = df.dropna().reset_index(drop=True)
