@@ -43,6 +43,8 @@ class BacktestService:
 
         usdt_balance = initial_usdt
         asset_balance = 0.0
+        average_entry_price = None
+        realized_pnl = 0.0
 
         trades = []
         equity_curve = []
@@ -52,6 +54,9 @@ class BacktestService:
         buy_count = 0
         sell_count = 0
         hold_count = 0
+        profitable_trades = 0
+        closed_trades = 0
+        closed_trade_pnls = []
 
         for i in range(len(df)):
             row = df.iloc[i]
@@ -67,19 +72,15 @@ class BacktestService:
             buy_candidate = probability_up >= buy_threshold
             sell_candidate = probability_up <= sell_threshold
 
-            # Trend filter
             if use_trend_filter and ema_fast is not None and ema_slow is not None:
                 if buy_candidate and not (ema_fast > ema_slow):
                     buy_candidate = False
-
                 if sell_candidate and not (ema_fast < ema_slow):
                     sell_candidate = False
 
-            # RSI filter
             if use_rsi_filter and rsi is not None:
                 if buy_candidate and not (rsi < rsi_overbought):
                     buy_candidate = False
-
                 if sell_candidate and not (rsi > rsi_oversold):
                     sell_candidate = False
 
@@ -89,11 +90,11 @@ class BacktestService:
             elif sell_candidate:
                 signal = "SELL"
 
-            # Cooldown in bars
             if signal in {"BUY", "SELL"} and (i - last_action_index) < cooldown_bars:
                 signal = "HOLD"
 
             executed = False
+            realized_pnl_delta = 0.0
 
             if signal == "BUY" and usdt_balance > 0:
                 usdt_to_spend = usdt_balance * trade_fraction
@@ -101,9 +102,24 @@ class BacktestService:
                 net_usdt = usdt_to_spend - fee
 
                 if net_usdt > 0:
-                    asset_amount = net_usdt / price
+                    bought_amount = net_usdt / price
+
+                    previous_asset_balance = asset_balance
+                    previous_avg_price = average_entry_price
+
                     usdt_balance -= usdt_to_spend
-                    asset_balance += asset_amount
+                    asset_balance += bought_amount
+
+                    if previous_asset_balance <= 0 or previous_avg_price is None:
+                        average_entry_price = price
+                    else:
+                        total_cost_before = previous_asset_balance * previous_avg_price
+                        total_cost_new = bought_amount * price
+                        total_asset_after = previous_asset_balance + bought_amount
+                        average_entry_price = (
+                            total_cost_before + total_cost_new
+                        ) / total_asset_after
+
                     executed = True
                     last_action_index = i
                     buy_count += 1
@@ -113,7 +129,7 @@ class BacktestService:
                             "timestamp": timestamp,
                             "side": "BUY",
                             "price": price,
-                            "amount": asset_amount,
+                            "amount": bought_amount,
                             "fee": fee,
                             "probability_up": probability_up,
                             "rsi": rsi,
@@ -124,13 +140,28 @@ class BacktestService:
 
             elif signal == "SELL" and asset_balance > 0:
                 asset_to_sell = asset_balance * trade_fraction
-                gross_usdt = asset_to_sell * price
-                fee = gross_usdt * fee_rate
-                net_usdt = gross_usdt - fee
 
                 if asset_to_sell > 0:
+                    gross_usdt = asset_to_sell * price
+                    fee = gross_usdt * fee_rate
+                    net_usdt = gross_usdt - fee
+
+                    avg_entry = average_entry_price or price
+                    realized_pnl_delta = (price - avg_entry) * asset_to_sell - fee
+
                     asset_balance -= asset_to_sell
                     usdt_balance += net_usdt
+                    realized_pnl += realized_pnl_delta
+
+                    closed_trades += 1
+                    closed_trade_pnls.append(realized_pnl_delta)
+                    if realized_pnl_delta > 0:
+                        profitable_trades += 1
+
+                    if asset_balance <= 1e-12:
+                        asset_balance = 0.0
+                        average_entry_price = None
+
                     executed = True
                     last_action_index = i
                     sell_count += 1
@@ -142,6 +173,7 @@ class BacktestService:
                             "price": price,
                             "amount": asset_to_sell,
                             "fee": fee,
+                            "realized_pnl_delta": realized_pnl_delta,
                             "probability_up": probability_up,
                             "rsi": rsi,
                             "ema_fast": ema_fast,
@@ -152,11 +184,21 @@ class BacktestService:
             if not executed:
                 hold_count += 1
 
-            portfolio_value = usdt_balance + (asset_balance * price)
+            unrealized_pnl = 0.0
+            if asset_balance > 0 and average_entry_price is not None:
+                unrealized_pnl = (price - average_entry_price) * asset_balance
+
+            position_value = asset_balance * price
+            portfolio_value = usdt_balance + position_value
             equity_curve.append(portfolio_value)
 
         final_price = float(df.iloc[-1]["close"])
-        final_balance = usdt_balance + (asset_balance * final_price)
+        final_position_value = asset_balance * final_price
+        final_unrealized_pnl = 0.0
+        if asset_balance > 0 and average_entry_price is not None:
+            final_unrealized_pnl = (final_price - average_entry_price) * asset_balance
+
+        final_balance = usdt_balance + final_position_value
         total_return_pct = ((final_balance - initial_usdt) / initial_usdt) * 100
 
         peak = equity_curve[0] if equity_curve else initial_usdt
@@ -165,10 +207,18 @@ class BacktestService:
         for value in equity_curve:
             if value > peak:
                 peak = value
-
             drawdown = ((peak - value) / peak) * 100 if peak > 0 else 0.0
             if drawdown > max_drawdown:
                 max_drawdown = drawdown
+
+        win_rate = (
+            (profitable_trades / closed_trades * 100) if closed_trades > 0 else 0.0
+        )
+        average_closed_trade_pnl = (
+            sum(closed_trade_pnls) / len(closed_trade_pnls)
+            if closed_trade_pnls
+            else 0.0
+        )
 
         return {
             "status": "ok",
@@ -179,10 +229,19 @@ class BacktestService:
             "initial_usdt": initial_usdt,
             "final_balance": final_balance,
             "total_return_pct": total_return_pct,
+            "realized_pnl": realized_pnl,
+            "final_unrealized_pnl": final_unrealized_pnl,
+            "final_position_value": final_position_value,
+            "open_asset_balance": asset_balance,
+            "average_entry_price": average_entry_price,
             "trade_count": len(trades),
             "buy_count": buy_count,
             "sell_count": sell_count,
             "hold_count": hold_count,
+            "closed_trades": closed_trades,
+            "profitable_trades": profitable_trades,
+            "win_rate_pct": win_rate,
+            "average_closed_trade_pnl": average_closed_trade_pnl,
             "max_drawdown_pct": max_drawdown,
             "last_price": final_price,
             "target_threshold": target_threshold,
