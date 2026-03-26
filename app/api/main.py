@@ -400,10 +400,17 @@ def execute_paper_trade(
     timeframe: str = Query(default="5m"),
     lag_periods: int = Query(default=3, ge=1, le=20),
     future_steps: int = Query(default=3, ge=1, le=20),
-    buy_threshold: float = Query(default=0.7, gt=0.0, lt=1.0),
-    sell_threshold: float = Query(default=0.3, gt=0.0, lt=1.0),
+    target_threshold: float = Query(default=0.002, ge=0.0, lt=1.0),
+    buy_threshold: float = Query(default=0.6, gt=0.0, lt=1.0),
+    sell_threshold: float = Query(default=0.4, gt=0.0, lt=1.0),
     trade_fraction: float = Query(default=0.1, gt=0.0, lt=1.0),
     fee_rate: float = Query(default=0.001, ge=0.0, lt=1.0),
+    cooldown_ms: int = Query(default=900000, ge=0),
+    use_trend_filter: bool = Query(default=True),
+    use_rsi_filter: bool = Query(default=True),
+    rsi_overbought: float = Query(default=70.0, gt=0.0, lt=100.0),
+    rsi_oversold: float = Query(default=30.0, gt=0.0, lt=100.0),
+    model_type: str = Query(default="logistic_regression"),
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     service = PaperTradingService(db)
@@ -412,10 +419,17 @@ def execute_paper_trade(
         timeframe=timeframe,
         lag_periods=lag_periods,
         future_steps=future_steps,
+        target_threshold=target_threshold,
         buy_threshold=buy_threshold,
         sell_threshold=sell_threshold,
         trade_fraction=trade_fraction,
         fee_rate=fee_rate,
+        cooldown_ms=cooldown_ms,
+        use_trend_filter=use_trend_filter,
+        use_rsi_filter=use_rsi_filter,
+        rsi_overbought=rsi_overbought,
+        rsi_oversold=rsi_oversold,
+        model_type=model_type,
     )
 
 
@@ -540,4 +554,25 @@ def backfill_ohlcv(
         since=since,
         batch_limit=batch_limit,
         max_batches=max_batches,
+    )
+
+
+@app.post("/paper-trading/execute-manual")
+def execute_manual_paper_trade(
+    symbol: str = Query(default="BTC/USDT"),
+    side: str = Query(..., pattern="^(BUY|SELL|buy|sell)$"),
+    price: float = Query(..., gt=0.0),
+    trade_fraction: float = Query(default=0.1, gt=0.0, lt=1.0),
+    fee_rate: float = Query(default=0.001, ge=0.0, lt=1.0),
+    timestamp: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    service = PaperTradingService(db)
+    return service.execute_manual_trade(
+        symbol=symbol,
+        side=side,
+        price=price,
+        trade_fraction=trade_fraction,
+        fee_rate=fee_rate,
+        timestamp=timestamp,
     )
