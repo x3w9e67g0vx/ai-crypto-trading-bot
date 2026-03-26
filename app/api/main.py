@@ -668,3 +668,116 @@ def calculate_multiple_indicators(
         symbols=symbol_list,
         timeframe=timeframe,
     )
+
+
+@app.post("/telegram/send/signals-summary")
+def send_signals_summary_to_telegram(
+    timeframe: str = Query(default="5m"),
+    symbols: str | None = Query(default=None, description="Comma-separated symbols"),
+    lag_periods: int = Query(default=3, ge=1, le=20),
+    future_steps: int = Query(default=3, ge=1, le=20),
+    target_threshold: float = Query(default=0.002, ge=0.0, lt=1.0),
+    buy_threshold: float = Query(default=0.6, gt=0.0, lt=1.0),
+    sell_threshold: float = Query(default=0.4, gt=0.0, lt=1.0),
+    cooldown_ms: int = Query(default=900000, ge=0),
+    use_trend_filter: bool = Query(default=True),
+    use_rsi_filter: bool = Query(default=True),
+    rsi_overbought: float = Query(default=70.0, gt=0.0, lt=100.0),
+    rsi_oversold: float = Query(default=30.0, gt=0.0, lt=100.0),
+    model_type: str = Query(default="logistic_regression"),
+    actionable_only: bool = Query(default=True),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    if not settings.TELEGRAM_CHAT_ID:
+        return {
+            "status": "error",
+            "message": "TELEGRAM_CHAT_ID is not configured",
+        }
+
+    symbol_list = (
+        [s.strip() for s in symbols.split(",") if s.strip()]
+        if symbols
+        else settings.get_default_symbols()
+    )
+
+    notification_service = NotificationService(db)
+    should_send, text = notification_service.format_multi_symbol_signals_summary(
+        symbols=symbol_list,
+        timeframe=timeframe,
+        lag_periods=lag_periods,
+        future_steps=future_steps,
+        target_threshold=target_threshold,
+        buy_threshold=buy_threshold,
+        sell_threshold=sell_threshold,
+        cooldown_ms=cooldown_ms,
+        use_trend_filter=use_trend_filter,
+        use_rsi_filter=use_rsi_filter,
+        rsi_overbought=rsi_overbought,
+        rsi_oversold=rsi_oversold,
+        model_type=model_type,
+        actionable_only=actionable_only,
+    )
+
+    if not should_send:
+        return {
+            "status": "ok",
+            "sent": False,
+            "message": text,
+        }
+
+    telegram_service = TelegramService()
+    asyncio.run(
+        telegram_service.send_message(
+            chat_id=int(settings.TELEGRAM_CHAT_ID),
+            text=text,
+        )
+    )
+
+    return {
+        "status": "ok",
+        "sent": True,
+        "message": "Signals summary sent to Telegram",
+        "symbols": symbol_list,
+    }
+
+
+@app.post("/strategy/signals/generate-and-save-multiple")
+def generate_and_save_multiple_signals(
+    timeframe: str = Query(default="5m"),
+    symbols: str | None = Query(default=None, description="Comma-separated symbols"),
+    lag_periods: int = Query(default=3, ge=1, le=20),
+    future_steps: int = Query(default=3, ge=1, le=20),
+    target_threshold: float = Query(default=0.002, ge=0.0, lt=1.0),
+    buy_threshold: float = Query(default=0.6, gt=0.0, lt=1.0),
+    sell_threshold: float = Query(default=0.4, gt=0.0, lt=1.0),
+    cooldown_ms: int = Query(default=900000, ge=0),
+    use_trend_filter: bool = Query(default=True),
+    use_rsi_filter: bool = Query(default=True),
+    rsi_overbought: float = Query(default=70.0, gt=0.0, lt=100.0),
+    rsi_oversold: float = Query(default=30.0, gt=0.0, lt=100.0),
+    model_type: str = Query(default="logistic_regression"),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    service = StrategyService(db)
+
+    symbol_list = (
+        [s.strip() for s in symbols.split(",") if s.strip()]
+        if symbols
+        else settings.get_default_symbols()
+    )
+
+    return service.generate_and_save_multiple_signals(
+        symbols=symbol_list,
+        timeframe=timeframe,
+        lag_periods=lag_periods,
+        future_steps=future_steps,
+        target_threshold=target_threshold,
+        buy_threshold=buy_threshold,
+        sell_threshold=sell_threshold,
+        cooldown_ms=cooldown_ms,
+        use_trend_filter=use_trend_filter,
+        use_rsi_filter=use_rsi_filter,
+        rsi_overbought=rsi_overbought,
+        rsi_oversold=rsi_oversold,
+        model_type=model_type,
+    )

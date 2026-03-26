@@ -10,60 +10,67 @@ from airflow import DAG
 BASE_URL = "http://host.docker.internal:8000"
 
 
-def call_update_ohlcv() -> None:
+def call_update_multiple_symbols() -> None:
     response = requests.post(
-        f"{BASE_URL}/update/ohlcv",
+        f"{BASE_URL}/ingest/update-multiple",
         params={
-            "symbol": "BTC/USDT",
             "timeframe": "5m",
             "limit": 100,
         },
-        timeout=60,
+        timeout=120,
     )
     response.raise_for_status()
     print(response.json())
 
 
-def call_calculate_indicators() -> None:
+def call_calculate_multiple_indicators() -> None:
     response = requests.post(
-        f"{BASE_URL}/indicators/calculate",
+        f"{BASE_URL}/indicators/calculate-multiple",
         params={
-            "symbol": "BTC/USDT",
             "timeframe": "5m",
         },
-        timeout=60,
+        timeout=120,
     )
     response.raise_for_status()
     print(response.json())
 
 
-def call_generate_and_save_signal() -> None:
+def call_generate_and_save_multiple_signals() -> None:
     response = requests.post(
-        f"{BASE_URL}/strategy/signal/generate-and-save",
+        f"{BASE_URL}/strategy/signals/generate-and-save-multiple",
         params={
-            "symbol": "BTC/USDT",
             "timeframe": "5m",
             "lag_periods": 3,
             "future_steps": 3,
-            "buy_threshold": 0.7,
-            "sell_threshold": 0.3,
+            "target_threshold": 0.002,
+            "buy_threshold": 0.6,
+            "sell_threshold": 0.4,
             "cooldown_ms": 900000,
             "use_trend_filter": True,
+            "use_rsi_filter": True,
+            "model_type": "logistic_regression",
         },
-        timeout=60,
+        timeout=120,
     )
     response.raise_for_status()
     print(response.json())
 
 
-def call_send_last_signal_if_actionable() -> None:
+def call_send_signals_summary_to_telegram() -> None:
     response = requests.post(
-        f"{BASE_URL}/telegram/send/last-signal-if-actionable",
+        f"{BASE_URL}/telegram/send/signals-summary",
         params={
-            "symbol": "BTC/USDT",
             "timeframe": "5m",
+            "target_threshold": 0.002,
+            "buy_threshold": 0.6,
+            "sell_threshold": 0.4,
+            "cooldown_ms": 900000,
+            "use_trend_filter": True,
+            "use_rsi_filter": True,
+            "model_type": "logistic_regression",
+            "actionable_only": True,
         },
-        timeout=60,
+        timeout=120,
     )
     response.raise_for_status()
     print(response.json())
@@ -74,25 +81,31 @@ with DAG(
     start_date=datetime(2026, 3, 25),
     schedule="*/5 * * * *",
     catchup=False,
-    tags=["crypto", "ml", "signals"],
+    tags=["crypto", "ml", "signals", "multi-symbol"],
 ) as dag:
-    update_ohlcv = PythonOperator(
-        task_id="update_ohlcv",
-        python_callable=call_update_ohlcv,
+    update_multiple_symbols = PythonOperator(
+        task_id="update_multiple_symbols",
+        python_callable=call_update_multiple_symbols,
     )
 
-    calculate_indicators = PythonOperator(
-        task_id="calculate_indicators",
-        python_callable=call_calculate_indicators,
+    calculate_multiple_indicators = PythonOperator(
+        task_id="calculate_multiple_indicators",
+        python_callable=call_calculate_multiple_indicators,
     )
 
-    generate_signal = PythonOperator(
-        task_id="generate_and_save_signal",
-        python_callable=call_generate_and_save_signal,
-    )
-    send_signal_to_telegram = PythonOperator(
-        task_id="send_last_signal_if_actionable",
-        python_callable=call_send_last_signal_if_actionable,
+    generate_and_save_multiple_signals = PythonOperator(
+        task_id="generate_and_save_multiple_signals",
+        python_callable=call_generate_and_save_multiple_signals,
     )
 
-    update_ohlcv >> calculate_indicators >> generate_signal >> send_signal_to_telegram
+    send_signals_summary_to_telegram = PythonOperator(
+        task_id="send_signals_summary_to_telegram",
+        python_callable=call_send_signals_summary_to_telegram,
+    )
+
+    (
+        update_multiple_symbols
+        >> calculate_multiple_indicators
+        >> generate_and_save_multiple_signals
+        >> send_signals_summary_to_telegram
+    )

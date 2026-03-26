@@ -99,3 +99,78 @@ class NotificationService:
         )
 
         return True, message
+
+    def format_multi_symbol_signals_summary(
+        self,
+        symbols: list[str],
+        timeframe: str,
+        lag_periods: int = 3,
+        future_steps: int = 3,
+        target_threshold: float = 0.002,
+        buy_threshold: float = 0.6,
+        sell_threshold: float = 0.4,
+        cooldown_ms: int = 15 * 60 * 1000,
+        use_trend_filter: bool = True,
+        use_rsi_filter: bool = True,
+        rsi_overbought: float = 70.0,
+        rsi_oversold: float = 30.0,
+        model_type: str = "logistic_regression",
+        actionable_only: bool = True,
+    ) -> tuple[bool, str]:
+        scan_result = self.strategy_service.scan_multiple_signals(
+            symbols=symbols,
+            timeframe=timeframe,
+            lag_periods=lag_periods,
+            future_steps=future_steps,
+            target_threshold=target_threshold,
+            buy_threshold=buy_threshold,
+            sell_threshold=sell_threshold,
+            cooldown_ms=cooldown_ms,
+            use_trend_filter=use_trend_filter,
+            use_rsi_filter=use_rsi_filter,
+            rsi_overbought=rsi_overbought,
+            rsi_oversold=rsi_oversold,
+            model_type=model_type,
+        )
+
+        results = scan_result["results"]
+
+        filtered_results = []
+        for item in results:
+            if item.get("status") != "ok":
+                continue
+            if actionable_only and item.get("signal") == "HOLD":
+                continue
+            filtered_results.append(item)
+
+        if not filtered_results:
+            return False, (
+                f"📭 No actionable signals\nTimeframe: {timeframe}\nModel: {model_type}"
+            )
+
+        lines = [
+            f"📊 Signals summary [{timeframe}]",
+            f"Model: {model_type}",
+            "",
+        ]
+
+        for item in filtered_results:
+            symbol = item["symbol"]
+            signal = item["signal"]
+            probability_up = float(item["probability_up"])
+            close_price = float(item["close"])
+            rsi = item.get("rsi")
+            reasons = item.get("reasons", [])
+
+            reason_text = ", ".join(reasons[:2]) if reasons else "no reasons"
+            rsi_text = f"{float(rsi):.2f}" if rsi is not None else "n/a"
+
+            lines.append(
+                f"{symbol} — {signal}\n"
+                f"Price: {close_price:.4f}\n"
+                f"ProbUp: {probability_up:.4f}\n"
+                f"RSI: {rsi_text}\n"
+                f"Why: {reason_text}\n"
+            )
+
+        return True, "\n".join(lines)
