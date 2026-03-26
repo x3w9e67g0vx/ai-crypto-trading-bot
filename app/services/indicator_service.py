@@ -135,3 +135,32 @@ class IndicatorService:
             "timeframe": timeframe,
             **result,
         }
+
+    def calculate_and_save_multiple(
+        self,
+        symbols: list[str],
+        timeframe: str,
+    ) -> dict[str, object]:
+        results = []
+
+        total_inserted = 0
+        total_skipped = 0
+        total_rows = 0
+
+        for symbol in symbols:
+            result = self.calculate_and_save(symbol=symbol, timeframe=timeframe)
+            results.append(result)
+
+            total_inserted += int(result["inserted"])
+            total_skipped += int(result["skipped"])
+            total_rows += int(result["total"])
+
+        return {
+            "timeframe": timeframe,
+            "symbols": symbols,
+            "count": len(symbols),
+            "total_inserted": total_inserted,
+            "total_skipped": total_skipped,
+            "total_rows": total_rows,
+            "results": results,
+        }

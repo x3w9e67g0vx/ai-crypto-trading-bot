@@ -285,6 +285,14 @@ def get_training_runs(
     }
 
 
+@app.get("/markets/default-symbols")
+def get_default_symbols() -> dict[str, object]:
+    return {
+        "symbols": settings.get_default_symbols(),
+        "count": len(settings.get_default_symbols()),
+    }
+
+
 @app.post("/ingest/ohlcv")
 def ingest_ohlcv(
     symbol: str = Query(default="BTC/USDT"),
@@ -575,4 +583,46 @@ def execute_manual_paper_trade(
         trade_fraction=trade_fraction,
         fee_rate=fee_rate,
         timestamp=timestamp,
+    )
+
+
+@app.post("/ingest/update-multiple")
+def update_multiple_symbols(
+    timeframe: str = Query(default="5m"),
+    limit: int = Query(default=100, ge=1, le=1000),
+    symbols: str | None = Query(default=None, description="Comma-separated symbols"),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    service = IngestionService(db)
+
+    symbol_list = (
+        [s.strip() for s in symbols.split(",") if s.strip()]
+        if symbols
+        else settings.get_default_symbols()
+    )
+
+    return service.ingest_multiple_symbols(
+        symbols=symbol_list,
+        timeframe=timeframe,
+        limit=limit,
+    )
+
+
+@app.post("/indicators/calculate-multiple")
+def calculate_multiple_indicators(
+    timeframe: str = Query(default="5m"),
+    symbols: str | None = Query(default=None, description="Comma-separated symbols"),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    service = IndicatorService(db)
+
+    symbol_list = (
+        [s.strip() for s in symbols.split(",") if s.strip()]
+        if symbols
+        else settings.get_default_symbols()
+    )
+
+    return service.calculate_and_save_multiple(
+        symbols=symbol_list,
+        timeframe=timeframe,
     )

@@ -206,3 +206,37 @@ class IngestionService:
             "total_skipped": total_skipped,
             "last_timestamp": last_timestamp,
         }
+
+    def ingest_multiple_symbols(
+        self,
+        symbols: list[str],
+        timeframe: str,
+        limit: int = 100,
+    ) -> dict[str, object]:
+        results = []
+
+        total_inserted = 0
+        total_skipped = 0
+        total_fetched = 0
+
+        for symbol in symbols:
+            result = self.update_ohlcv(
+                symbol=symbol,
+                timeframe=timeframe,
+                limit=limit,
+            )
+
+            results.append(result)
+            total_inserted += int(result["inserted"])
+            total_skipped += int(result["skipped"])
+            total_fetched += int(result["fetched"])
+
+        return {
+            "timeframe": timeframe,
+            "symbols": symbols,
+            "count": len(symbols),
+            "total_inserted": total_inserted,
+            "total_skipped": total_skipped,
+            "total_fetched": total_fetched,
+            "results": results,
+        }
