@@ -293,6 +293,48 @@ def get_default_symbols() -> dict[str, object]:
     }
 
 
+@app.get("/strategy/signals/scan")
+def scan_multiple_signals(
+    timeframe: str = Query(default="5m"),
+    symbols: str | None = Query(default=None, description="Comma-separated symbols"),
+    lag_periods: int = Query(default=3, ge=1, le=20),
+    future_steps: int = Query(default=3, ge=1, le=20),
+    target_threshold: float = Query(default=0.002, ge=0.0, lt=1.0),
+    buy_threshold: float = Query(default=0.6, gt=0.0, lt=1.0),
+    sell_threshold: float = Query(default=0.4, gt=0.0, lt=1.0),
+    cooldown_ms: int = Query(default=900000, ge=0),
+    use_trend_filter: bool = Query(default=True),
+    use_rsi_filter: bool = Query(default=True),
+    rsi_overbought: float = Query(default=70.0, gt=0.0, lt=100.0),
+    rsi_oversold: float = Query(default=30.0, gt=0.0, lt=100.0),
+    model_type: str = Query(default="logistic_regression"),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    service = StrategyService(db)
+
+    symbol_list = (
+        [s.strip() for s in symbols.split(",") if s.strip()]
+        if symbols
+        else settings.get_default_symbols()
+    )
+
+    return service.scan_multiple_signals(
+        symbols=symbol_list,
+        timeframe=timeframe,
+        lag_periods=lag_periods,
+        future_steps=future_steps,
+        target_threshold=target_threshold,
+        buy_threshold=buy_threshold,
+        sell_threshold=sell_threshold,
+        cooldown_ms=cooldown_ms,
+        use_trend_filter=use_trend_filter,
+        use_rsi_filter=use_rsi_filter,
+        rsi_overbought=rsi_overbought,
+        rsi_oversold=rsi_oversold,
+        model_type=model_type,
+    )
+
+
 @app.post("/ingest/ohlcv")
 def ingest_ohlcv(
     symbol: str = Query(default="BTC/USDT"),

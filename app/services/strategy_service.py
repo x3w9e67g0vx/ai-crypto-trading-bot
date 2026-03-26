@@ -262,3 +262,73 @@ class StrategyService:
             }
             for signal in signals
         ]
+
+    def scan_multiple_signals(
+        self,
+        symbols: list[str],
+        timeframe: str,
+        lag_periods: int = 3,
+        future_steps: int = 3,
+        target_threshold: float = 0.002,
+        buy_threshold: float = 0.6,
+        sell_threshold: float = 0.4,
+        cooldown_ms: int = 15 * 60 * 1000,
+        use_trend_filter: bool = True,
+        use_rsi_filter: bool = True,
+        rsi_overbought: float = 70.0,
+        rsi_oversold: float = 30.0,
+        model_type: str = "logistic_regression",
+    ) -> dict[str, object]:
+        results = []
+
+        buy_count = 0
+        sell_count = 0
+        hold_count = 0
+
+        for symbol in symbols:
+            try:
+                result = self.generate_signal(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    lag_periods=lag_periods,
+                    future_steps=future_steps,
+                    buy_threshold=buy_threshold,
+                    sell_threshold=sell_threshold,
+                    cooldown_ms=cooldown_ms,
+                    use_trend_filter=use_trend_filter,
+                    use_rsi_filter=use_rsi_filter,
+                    rsi_overbought=rsi_overbought,
+                    rsi_oversold=rsi_oversold,
+                    model_type=model_type,
+                    target_threshold=target_threshold,
+                )
+
+                signal = result["signal"]
+                if signal == "BUY":
+                    buy_count += 1
+                elif signal == "SELL":
+                    sell_count += 1
+                else:
+                    hold_count += 1
+
+                results.append(result)
+
+            except Exception as e:
+                results.append(
+                    {
+                        "status": "error",
+                        "symbol": symbol,
+                        "timeframe": timeframe,
+                        "error": str(e),
+                    }
+                )
+
+        return {
+            "timeframe": timeframe,
+            "model_type": model_type,
+            "count": len(symbols),
+            "buy_count": buy_count,
+            "sell_count": sell_count,
+            "hold_count": hold_count,
+            "results": results,
+        }
