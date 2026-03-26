@@ -93,6 +93,8 @@ class PortfolioState(Base):
     symbol = Column(String, nullable=False, unique=True, index=True)
     usdt_balance = Column(Float, nullable=False, default=1000.0)
     asset_balance = Column(Float, nullable=False, default=0.0)
+    average_entry_price = Column(Float, nullable=True)
+    realized_pnl = Column(Float, nullable=False, default=0.0)
     updated_at = Column(BigInteger, nullable=False)
 
 
