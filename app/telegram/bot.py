@@ -68,16 +68,24 @@ async def chatid_handler(message: Message) -> None:
 
 
 @dp.message(Command("signals"))
+@dp.message(Command("signals"))
 async def signals_handler(message: Message) -> None:
     db = SessionLocal()
     try:
+        sub_service = SubscriptionService(db)
+        symbols = sub_service.get_symbols_for_chat(message.chat.id)
+
+        if not symbols:
+            symbols = settings.get_default_symbols()
+
         service = NotificationService(db)
         should_send, text = service.format_multi_symbol_signals_summary(
-            symbols=settings.get_default_symbols(),
+            symbols=symbols,
             timeframe="5m",
             model_type="logistic_regression",
             actionable_only=True,
         )
+
         await message.answer(text)
     finally:
         db.close()
@@ -87,13 +95,20 @@ async def signals_handler(message: Message) -> None:
 async def scan_all_handler(message: Message) -> None:
     db = SessionLocal()
     try:
+        sub_service = SubscriptionService(db)
+        symbols = sub_service.get_symbols_for_chat(message.chat.id)
+
+        if not symbols:
+            symbols = settings.get_default_symbols()
+
         service = NotificationService(db)
         _, text = service.format_multi_symbol_signals_summary(
-            symbols=settings.get_default_symbols(),
+            symbols=symbols,
             timeframe="5m",
             model_type="logistic_regression",
             actionable_only=False,
         )
+
         await message.answer(text)
     finally:
         db.close()
@@ -170,23 +185,22 @@ async def trades_handler(message: Message) -> None:
 async def last_signals_handler(message: Message) -> None:
     db = SessionLocal()
     try:
+        sub_service = SubscriptionService(db)
+        symbols = sub_service.get_symbols_for_chat(message.chat.id)
+
+        if not symbols:
+            symbols = settings.get_default_symbols()
+
         service = NotificationService(db)
         text = service.format_recent_signals_summary(
-            symbols=settings.get_default_symbols(),
+            symbols=symbols,
             timeframe="5m",
             limit_per_symbol=3,
         )
+
         await message.answer(text)
     finally:
         db.close()
-
-
-async def main() -> None:
-    await dp.start_polling(bot)
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
 
 
 @dp.message(Command("subscribe_btc"))
@@ -270,3 +284,11 @@ async def my_symbols_handler(message: Message) -> None:
         await message.answer(f"Ваши подписки:\n{symbols_text}")
     finally:
         db.close()
+
+
+async def main() -> None:
+    await dp.start_polling(bot)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

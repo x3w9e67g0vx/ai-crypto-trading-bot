@@ -15,4 +15,5 @@ __all__ = [
     "Trade",
     "PortfolioState",
     "ModelTrainingRun",
+    "TelegramSubscription",
 ]
