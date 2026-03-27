@@ -4,6 +4,7 @@ from app.db.models import (
     ModelTrainingRun,
     PortfolioState,
     Signal,
+    TelegramSubscription,
     Trade,
 )
 

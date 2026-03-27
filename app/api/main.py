@@ -21,6 +21,7 @@ from app.services.ml_model_service import MLModelService
 from app.services.notification_service import NotificationService
 from app.services.paper_trading_service import PaperTradingService
 from app.services.strategy_service import StrategyService
+from app.services.subscription_service import SubscriptionService
 from app.services.telegram_service import TelegramService
 
 app = FastAPI(title="AI Crypto Trading Bot")
@@ -333,6 +334,37 @@ def scan_multiple_signals(
         rsi_oversold=rsi_oversold,
         model_type=model_type,
     )
+
+
+@app.get("/strategy/signals/recent-multiple")
+def get_recent_signals_multiple(
+    symbols: str | None = Query(default=None, description="Comma-separated symbols"),
+    timeframe: str | None = Query(default=None),
+    limit_per_symbol: int = Query(default=5, ge=1, le=50),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    service = StrategyService(db)
+
+    symbol_list = (
+        [s.strip() for s in symbols.split(",") if s.strip()]
+        if symbols
+        else settings.get_default_symbols()
+    )
+
+    return service.get_recent_signals_multiple(
+        symbols=symbol_list,
+        timeframe=timeframe,
+        limit_per_symbol=limit_per_symbol,
+    )
+
+
+@app.get("/subscriptions/my-symbols")
+def get_my_symbols(
+    chat_id: int = Query(...),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    service = SubscriptionService(db)
+    return service.get_all_for_chat(chat_id=chat_id)
 
 
 @app.post("/ingest/ohlcv")
@@ -781,3 +813,23 @@ def generate_and_save_multiple_signals(
         rsi_oversold=rsi_oversold,
         model_type=model_type,
     )
+
+
+@app.post("/subscriptions/subscribe")
+def subscribe_symbol(
+    chat_id: int = Query(...),
+    symbol: str = Query(...),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    service = SubscriptionService(db)
+    return service.subscribe(chat_id=chat_id, symbol=symbol)
+
+
+@app.post("/subscriptions/unsubscribe")
+def unsubscribe_symbol(
+    chat_id: int = Query(...),
+    symbol: str = Query(...),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    service = SubscriptionService(db)
+    return service.unsubscribe(chat_id=chat_id, symbol=symbol)

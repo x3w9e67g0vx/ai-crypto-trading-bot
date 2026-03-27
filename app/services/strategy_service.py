@@ -11,6 +11,40 @@ class StrategyService:
         self.db = db
         self.ml_model_service = MLModelService(db)
 
+    def get_recent_signals_multiple(
+        self,
+        symbols: list[str],
+        timeframe: str | None = None,
+        limit_per_symbol: int = 5,
+    ) -> dict[str, object]:
+        results = []
+        total_signals = 0
+
+        for symbol in symbols:
+            symbol_signals = self.get_recent_signals(
+                symbol=symbol,
+                timeframe=timeframe,
+                limit=limit_per_symbol,
+            )
+
+            results.append(
+                {
+                    "symbol": symbol,
+                    "timeframe": timeframe,
+                    "count": len(symbol_signals),
+                    "signals": symbol_signals,
+                }
+            )
+
+            total_signals += len(symbol_signals)
+
+        return {
+            "count_symbols": len(symbols),
+            "total_signals": total_signals,
+            "limit_per_symbol": limit_per_symbol,
+            "results": results,
+        }
+
     def get_last_saved_signal(
         self,
         symbol: str,

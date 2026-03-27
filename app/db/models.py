@@ -119,3 +119,12 @@ class ModelTrainingRun(Base):
 
     model_path = Column(String, nullable=True)
     created_at = Column(BigInteger, nullable=False, index=True)
+
+
+class TelegramSubscription(Base):
+    __tablename__ = "telegram_subscriptions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    symbol = Column(String, nullable=False, index=True)
+    created_at = Column(BigInteger, nullable=False, index=True)

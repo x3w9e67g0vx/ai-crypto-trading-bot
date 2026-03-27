@@ -174,3 +174,85 @@ class NotificationService:
             )
 
         return True, "\n".join(lines)
+
+    def format_single_symbol_signal_message(
+        self,
+        symbol: str,
+        timeframe: str,
+        lag_periods: int = 3,
+        future_steps: int = 3,
+        target_threshold: float = 0.002,
+        buy_threshold: float = 0.6,
+        sell_threshold: float = 0.4,
+        cooldown_ms: int = 15 * 60 * 1000,
+        use_trend_filter: bool = True,
+        use_rsi_filter: bool = True,
+        rsi_overbought: float = 70.0,
+        rsi_oversold: float = 30.0,
+        model_type: str = "logistic_regression",
+    ) -> str:
+        result = self.strategy_service.generate_signal(
+            symbol=symbol,
+            timeframe=timeframe,
+            lag_periods=lag_periods,
+            future_steps=future_steps,
+            target_threshold=target_threshold,
+            buy_threshold=buy_threshold,
+            sell_threshold=sell_threshold,
+            cooldown_ms=cooldown_ms,
+            use_trend_filter=use_trend_filter,
+            use_rsi_filter=use_rsi_filter,
+            rsi_overbought=rsi_overbought,
+            rsi_oversold=rsi_oversold,
+            model_type=model_type,
+        )
+
+        rsi = result.get("rsi")
+        rsi_text = f"{float(rsi):.2f}" if rsi is not None else "n/a"
+        reasons = ", ".join(result.get("reasons", [])) or "no reasons"
+
+        return (
+            f"📈 Signal [{result['symbol']}] ({result['timeframe']})\n"
+            f"Signal: {result['signal']}\n"
+            f"Price: {float(result['close']):.4f}\n"
+            f"ProbUp: {float(result['probability_up']):.4f}\n"
+            f"RSI: {rsi_text}\n"
+            f"Reasons: {reasons}"
+        )
+
+    def format_recent_signals_summary(
+        self,
+        symbols: list[str],
+        timeframe: str | None = None,
+        limit_per_symbol: int = 3,
+    ) -> str:
+        data = self.strategy_service.get_recent_signals_multiple(
+            symbols=symbols,
+            timeframe=timeframe,
+            limit_per_symbol=limit_per_symbol,
+        )
+
+        lines = ["🕘 Recent signals summary", ""]
+
+        for item in data["results"]:
+            symbol = item["symbol"]
+            signals = item["signals"]
+
+            lines.append(f"{symbol}:")
+
+            if not signals:
+                lines.append("  No signals")
+                lines.append("")
+                continue
+
+            for signal in signals:
+                lines.append(
+                    f"  {signal['signal']} | "
+                    f"price={float(signal['price']):.4f} | "
+                    f"conf={float(signal['confidence']):.4f} | "
+                    f"ts={signal['timestamp']}"
+                )
+
+            lines.append("")
+
+        return "\n".join(lines)
