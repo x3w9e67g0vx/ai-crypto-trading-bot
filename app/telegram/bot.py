@@ -8,6 +8,7 @@ from aiogram.types import Message
 
 from app.core.config import settings
 from app.db.session import SessionLocal
+from app.services.market_data_service import MarketDataService
 from app.services.notification_service import NotificationService
 from app.services.subscription_service import SubscriptionService
 
@@ -24,6 +25,7 @@ def get_help_text() -> str:
         "/status — статус бота\n"
         "/ping — проверка\n"
         "/chatid — показать chat_id\n"
+        "/available_symbols — доступные торговые пары\n"
         "/signals — actionable summary по default symbols\n"
         "/scan_all — summary по default symbols, включая HOLD\n"
         "/signal_btc — сигнал по BTC/USDT\n"
@@ -32,6 +34,8 @@ def get_help_text() -> str:
         "/portfolio — paper portfolio BTC/USDT\n"
         "/trades — последние сделки BTC/USDT\n"
         "/last_signals — последние сохранённые сигналы по default symbols\n"
+        "/subscribe <symbol> — подписаться, например /subscribe BTC/USDT\n"
+        "/unsubscribe <symbol> — отписаться, например /unsubscribe ETH/USDT\n"
         "/subscribe_btc — подписаться на BTC/USDT\n"
         "/subscribe_eth — подписаться на ETH/USDT\n"
         "/subscribe_sol — подписаться на SOL/USDT\n"
@@ -40,6 +44,18 @@ def get_help_text() -> str:
         "/unsubscribe_sol — отписаться от SOL/USDT\n"
         "/my_symbols — мои подписки\n"
     )
+
+
+def normalize_symbol_input(raw: str) -> str:
+    value = raw.strip().upper()
+
+    aliases = {
+        "BTC": "BTC/USDT",
+        "ETH": "ETH/USDT",
+        "SOL": "SOL/USDT",
+    }
+
+    return aliases.get(value, value)
 
 
 @dp.message(Command("start"))
@@ -282,6 +298,86 @@ async def my_symbols_handler(message: Message) -> None:
 
         symbols_text = "\n".join(f"- {symbol}" for symbol in result["symbols"])
         await message.answer(f"Ваши подписки:\n{symbols_text}")
+    finally:
+        db.close()
+
+
+@dp.message(Command("subscribe"))
+async def subscribe_handler(message: Message) -> None:
+    db = SessionLocal()
+    try:
+        parts = (message.text or "").split(maxsplit=1)
+
+        if len(parts) < 2:
+            await message.answer(
+                "Укажи символ. Пример:\n"
+                "/subscribe BTC/USDT\n"
+                "/subscribe ETH\n"
+                "/subscribe SOL"
+            )
+            return
+
+        symbol = normalize_symbol_input(parts[1])
+        allowed_symbols = settings.get_default_symbols()
+
+        if symbol not in allowed_symbols:
+            allowed_text = "\n".join(f"- {s}" for s in allowed_symbols)
+            await message.answer(
+                f"Символ не поддерживается: {symbol}\n\n"
+                f"Доступные символы:\n{allowed_text}"
+            )
+            return
+
+        service = SubscriptionService(db)
+        result = service.subscribe(chat_id=message.chat.id, symbol=symbol)
+        await message.answer(f"{result['message']}: {symbol}")
+    finally:
+        db.close()
+
+
+@dp.message(Command("unsubscribe"))
+async def unsubscribe_handler(message: Message) -> None:
+    db = SessionLocal()
+    try:
+        parts = (message.text or "").split(maxsplit=1)
+
+        if len(parts) < 2:
+            await message.answer(
+                "Укажи символ. Пример:\n"
+                "/unsubscribe BTC/USDT\n"
+                "/unsubscribe ETH\n"
+                "/unsubscribe SOL"
+            )
+            return
+
+        symbol = normalize_symbol_input(parts[1])
+
+        service = SubscriptionService(db)
+        result = service.unsubscribe(chat_id=message.chat.id, symbol=symbol)
+        await message.answer(f"{result['message']}: {symbol}")
+    finally:
+        db.close()
+
+
+@dp.message(Command("available_symbols"))
+async def available_symbols_handler(message: Message) -> None:
+    db = SessionLocal()
+    try:
+        market_service = MarketDataService()
+        service = NotificationService(db)
+
+        symbols = market_service.get_available_symbols(
+            quote="USDT",
+            only_active=True,
+            spot_only=True,
+            limit=30,
+        )
+
+        text = service.format_available_symbols_message(
+            symbols=symbols,
+            quote="USDT",
+        )
+        await message.answer(text)
     finally:
         db.close()
 

@@ -56,9 +56,9 @@ def call_generate_and_save_multiple_signals() -> None:
     print(response.json())
 
 
-def call_send_signals_summary_to_telegram() -> None:
+def call_send_subscription_summaries_to_telegram() -> None:
     response = requests.post(
-        f"{BASE_URL}/telegram/send/signals-summary",
+        f"{BASE_URL}/telegram/send/subscription-summaries",
         params={
             "timeframe": "5m",
             "target_threshold": 0.002,
@@ -98,14 +98,13 @@ with DAG(
         python_callable=call_generate_and_save_multiple_signals,
     )
 
-    send_signals_summary_to_telegram = PythonOperator(
-        task_id="send_signals_summary_to_telegram",
-        python_callable=call_send_signals_summary_to_telegram,
+    send_subscription_summaries_to_telegram = PythonOperator(
+        task_id="send_subscription_summaries_to_telegram",
+        python_callable=call_send_subscription_summaries_to_telegram,
     )
-
     (
         update_multiple_symbols
         >> calculate_multiple_indicators
         >> generate_and_save_multiple_signals
-        >> send_signals_summary_to_telegram
+        >> send_subscription_summaries_to_telegram
     )

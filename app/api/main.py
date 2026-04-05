@@ -367,6 +367,31 @@ def get_my_symbols(
     return service.get_all_for_chat(chat_id=chat_id)
 
 
+@app.get("/markets/available-symbols")
+def get_available_symbols(
+    quote: str | None = Query(default="USDT"),
+    only_active: bool = Query(default=True),
+    spot_only: bool = Query(default=True),
+    limit: int = Query(default=50, ge=1, le=500),
+) -> dict[str, object]:
+    service = MarketDataService()
+
+    symbols = service.get_available_symbols(
+        quote=quote,
+        only_active=only_active,
+        spot_only=spot_only,
+        limit=limit,
+    )
+
+    return {
+        "quote": quote,
+        "only_active": only_active,
+        "spot_only": spot_only,
+        "count": len(symbols),
+        "symbols": symbols,
+    }
+
+
 @app.post("/ingest/ohlcv")
 def ingest_ohlcv(
     symbol: str = Query(default="BTC/USDT"),
@@ -833,3 +858,92 @@ def unsubscribe_symbol(
 ) -> dict[str, object]:
     service = SubscriptionService(db)
     return service.unsubscribe(chat_id=chat_id, symbol=symbol)
+
+
+@app.post("/telegram/send/subscription-summaries")
+def send_subscription_summaries_to_telegram(
+    timeframe: str = Query(default="5m"),
+    lag_periods: int = Query(default=3, ge=1, le=20),
+    future_steps: int = Query(default=3, ge=1, le=20),
+    target_threshold: float = Query(default=0.002, ge=0.0, lt=1.0),
+    buy_threshold: float = Query(default=0.6, gt=0.0, lt=1.0),
+    sell_threshold: float = Query(default=0.4, gt=0.0, lt=1.0),
+    cooldown_ms: int = Query(default=900000, ge=0),
+    use_trend_filter: bool = Query(default=True),
+    use_rsi_filter: bool = Query(default=True),
+    rsi_overbought: float = Query(default=70.0, gt=0.0, lt=100.0),
+    rsi_oversold: float = Query(default=30.0, gt=0.0, lt=100.0),
+    model_type: str = Query(default="logistic_regression"),
+    actionable_only: bool = Query(default=True),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    sub_service = SubscriptionService(db)
+    notification_service = NotificationService(db)
+    telegram_service = TelegramService()
+
+    chat_ids = sub_service.get_all_chat_ids()
+
+    if not chat_ids:
+        return {
+            "status": "ok",
+            "sent_count": 0,
+            "message": "No subscribed chats found",
+        }
+
+    results = []
+    sent_count = 0
+    skipped_count = 0
+
+    for chat_id in chat_ids:
+        should_send, text, symbols = (
+            notification_service.format_multi_symbol_signals_summary_for_chat(
+                chat_id=chat_id,
+                timeframe=timeframe,
+                lag_periods=lag_periods,
+                future_steps=future_steps,
+                target_threshold=target_threshold,
+                buy_threshold=buy_threshold,
+                sell_threshold=sell_threshold,
+                cooldown_ms=cooldown_ms,
+                use_trend_filter=use_trend_filter,
+                use_rsi_filter=use_rsi_filter,
+                rsi_overbought=rsi_overbought,
+                rsi_oversold=rsi_oversold,
+                model_type=model_type,
+                actionable_only=actionable_only,
+            )
+        )
+
+        if should_send:
+            asyncio.run(
+                telegram_service.send_message(
+                    chat_id=chat_id,
+                    text=text,
+                )
+            )
+            sent_count += 1
+            results.append(
+                {
+                    "chat_id": chat_id,
+                    "sent": True,
+                    "symbols": symbols,
+                }
+            )
+        else:
+            skipped_count += 1
+            results.append(
+                {
+                    "chat_id": chat_id,
+                    "sent": False,
+                    "symbols": symbols,
+                    "message": text,
+                }
+            )
+
+    return {
+        "status": "ok",
+        "chat_count": len(chat_ids),
+        "sent_count": sent_count,
+        "skipped_count": skipped_count,
+        "results": results,
+    }

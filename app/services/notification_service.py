@@ -256,3 +256,66 @@ class NotificationService:
             lines.append("")
 
         return "\n".join(lines)
+
+    def format_multi_symbol_signals_summary_for_chat(
+        self,
+        chat_id: int,
+        timeframe: str,
+        limit_per_symbol: int = 3,
+        lag_periods: int = 3,
+        future_steps: int = 3,
+        target_threshold: float = 0.002,
+        buy_threshold: float = 0.6,
+        sell_threshold: float = 0.4,
+        cooldown_ms: int = 15 * 60 * 1000,
+        use_trend_filter: bool = True,
+        use_rsi_filter: bool = True,
+        rsi_overbought: float = 70.0,
+        rsi_oversold: float = 30.0,
+        model_type: str = "logistic_regression",
+        actionable_only: bool = True,
+    ) -> tuple[bool, str, list[str]]:
+        from app.services.subscription_service import SubscriptionService
+
+        sub_service = SubscriptionService(self.db)
+        symbols = sub_service.get_symbols_for_chat(chat_id)
+
+        if not symbols:
+            return False, "No subscriptions for this chat", []
+
+        should_send, text = self.format_multi_symbol_signals_summary(
+            symbols=symbols,
+            timeframe=timeframe,
+            lag_periods=lag_periods,
+            future_steps=future_steps,
+            target_threshold=target_threshold,
+            buy_threshold=buy_threshold,
+            sell_threshold=sell_threshold,
+            cooldown_ms=cooldown_ms,
+            use_trend_filter=use_trend_filter,
+            use_rsi_filter=use_rsi_filter,
+            rsi_overbought=rsi_overbought,
+            rsi_oversold=rsi_oversold,
+            model_type=model_type,
+            actionable_only=actionable_only,
+        )
+
+        return should_send, text, symbols
+
+    def format_available_symbols_message(
+        self,
+        symbols: list[str],
+        quote: str | None = "USDT",
+    ) -> str:
+        if not symbols:
+            return "Доступные символы не найдены."
+
+        lines = [
+            f"📚 Available symbols ({quote})",
+            "",
+        ]
+
+        for symbol in symbols:
+            lines.append(f"- {symbol}")
+
+        return "\n".join(lines)

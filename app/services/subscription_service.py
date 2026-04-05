@@ -102,3 +102,7 @@ class SubscriptionService:
             "count": len(symbols),
             "symbols": symbols,
         }
+
+    def get_all_chat_ids(self) -> list[int]:
+        rows = self.db.query(TelegramSubscription.chat_id).distinct().all()
+        return [int(row[0]) for row in rows]
