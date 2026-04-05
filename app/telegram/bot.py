@@ -49,13 +49,10 @@ def get_help_text() -> str:
 def normalize_symbol_input(raw: str) -> str:
     value = raw.strip().upper()
 
-    aliases = {
-        "BTC": "BTC/USDT",
-        "ETH": "ETH/USDT",
-        "SOL": "SOL/USDT",
-    }
+    if "/" not in value:
+        value = f"{value}/USDT"
 
-    return aliases.get(value, value)
+    return value
 
 
 @dp.message(Command("start"))
@@ -311,20 +308,27 @@ async def subscribe_handler(message: Message) -> None:
         if len(parts) < 2:
             await message.answer(
                 "Укажи символ. Пример:\n"
-                "/subscribe BTC/USDT\n"
+                "/subscribe BTC\n"
                 "/subscribe ETH\n"
-                "/subscribe SOL"
+                "/subscribe AAVE/USDT"
             )
             return
 
         symbol = normalize_symbol_input(parts[1])
-        allowed_symbols = settings.get_default_symbols()
 
-        if symbol not in allowed_symbols:
-            allowed_text = "\n".join(f"- {s}" for s in allowed_symbols)
+        market_service = MarketDataService()
+        available_symbols = market_service.get_available_symbols(
+            quote="USDT",
+            only_active=True,
+            spot_only=True,
+            limit=1000,
+        )
+
+        if symbol not in available_symbols:
+            preview = "\n".join(f"- {s}" for s in available_symbols[:20])
             await message.answer(
-                f"Символ не поддерживается: {symbol}\n\n"
-                f"Доступные символы:\n{allowed_text}"
+                f"Символ не поддерживается или не найден: {symbol}\n\n"
+                f"Примеры доступных символов:\n{preview}"
             )
             return
 

@@ -46,31 +46,24 @@ class MarketDataService:
         limit: int = 100,
         spot_only: bool = True,
     ) -> list[str]:
-        def get_available_symbols(
-            self,
-            quote: str | None = "USDT",
-            only_active: bool = True,
-            limit: int = 100,
-            spot_only: bool = True,
-        ) -> list[str]:
-            markets = self.client.load_markets()
+        markets = self.exchange_service.load_markets()
 
-            symbols = []
+        symbols = []
 
-            for symbol, market in markets.items():
-                if quote and market.get("quote") != quote:
+        for symbol, market in markets.items():
+            if quote and market.get("quote") != quote:
+                continue
+
+            if only_active and not market.get("active", True):
+                continue
+
+            if spot_only:
+                if ":" in symbol:
+                    continue
+                if not market.get("spot", False):
                     continue
 
-                if only_active and not market.get("active", True):
-                    continue
+            symbols.append(symbol)
 
-                if spot_only:
-                    if ":" in symbol:
-                        continue
-                    if not market.get("spot", False):
-                        continue
-
-                symbols.append(symbol)
-
-            symbols = sorted(symbols)
-            return symbols[:limit]
+        symbols = sorted(symbols)
+        return symbols[:limit]
