@@ -319,3 +319,21 @@ class NotificationService:
             lines.append(f"- {symbol}")
 
         return "\n".join(lines)
+
+    def format_symbol_search_message(
+        self,
+        query: str,
+        symbols: list[str],
+    ) -> str:
+        if not symbols:
+            return f"Ничего не найдено по запросу: {query}"
+
+        lines = [
+            f"🔎 Search results: {query}",
+            "",
+        ]
+
+        for symbol in symbols:
+            lines.append(f"- {symbol}")
+
+        return "\n".join(lines)

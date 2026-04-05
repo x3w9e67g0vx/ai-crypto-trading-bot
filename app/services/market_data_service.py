@@ -67,3 +67,23 @@ class MarketDataService:
 
         symbols = sorted(symbols)
         return symbols[:limit]
+
+    def search_symbols(
+        self,
+        query: str,
+        quote: str | None = "USDT",
+        only_active: bool = True,
+        spot_only: bool = True,
+        limit: int = 20,
+    ) -> list[str]:
+        query_upper = query.strip().upper()
+
+        symbols = self.get_available_symbols(
+            quote=quote,
+            only_active=only_active,
+            spot_only=spot_only,
+            limit=5000,
+        )
+
+        matches = [symbol for symbol in symbols if query_upper in symbol.upper()]
+        return matches[:limit]

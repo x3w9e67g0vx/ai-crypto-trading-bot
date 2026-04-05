@@ -26,6 +26,7 @@ def get_help_text() -> str:
         "/ping — проверка\n"
         "/chatid — показать chat_id\n"
         "/available_symbols — доступные торговые пары\n"
+        "/find <text> — найти пары, например /find BTC\n"
         "/signals — actionable summary по default symbols\n"
         "/scan_all — summary по default symbols, включая HOLD\n"
         "/signal_btc — сигнал по BTC/USDT\n"
@@ -380,6 +381,40 @@ async def available_symbols_handler(message: Message) -> None:
         text = service.format_available_symbols_message(
             symbols=symbols,
             quote="USDT",
+        )
+        await message.answer(text)
+    finally:
+        db.close()
+
+
+@dp.message(Command("find"))
+async def find_handler(message: Message) -> None:
+    db = SessionLocal()
+    try:
+        parts = (message.text or "").split(maxsplit=1)
+
+        if len(parts) < 2:
+            await message.answer(
+                "Укажи текст для поиска. Пример:\n/find BTC\n/find AAVE\n/find DOGE"
+            )
+            return
+
+        query = parts[1].strip()
+
+        market_service = MarketDataService()
+        service = NotificationService(db)
+
+        symbols = market_service.search_symbols(
+            query=query,
+            quote="USDT",
+            only_active=True,
+            spot_only=True,
+            limit=20,
+        )
+
+        text = service.format_symbol_search_message(
+            query=query,
+            symbols=symbols,
         )
         await message.answer(text)
     finally:

@@ -392,6 +392,34 @@ def get_available_symbols(
     }
 
 
+@app.get("/markets/search-symbols")
+def search_symbols(
+    query: str = Query(..., min_length=1),
+    quote: str | None = Query(default="USDT"),
+    only_active: bool = Query(default=True),
+    spot_only: bool = Query(default=True),
+    limit: int = Query(default=20, ge=1, le=100),
+) -> dict[str, object]:
+    service = MarketDataService()
+
+    symbols = service.search_symbols(
+        query=query,
+        quote=quote,
+        only_active=only_active,
+        spot_only=spot_only,
+        limit=limit,
+    )
+
+    return {
+        "query": query,
+        "quote": quote,
+        "only_active": only_active,
+        "spot_only": spot_only,
+        "count": len(symbols),
+        "symbols": symbols,
+    }
+
+
 @app.post("/ingest/ohlcv")
 def ingest_ohlcv(
     symbol: str = Query(default="BTC/USDT"),
