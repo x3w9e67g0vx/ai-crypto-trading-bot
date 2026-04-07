@@ -46,12 +46,17 @@ class PaperTradingService:
         sell_threshold: float = 0.4,
         trade_fraction: float = 0.1,
         fee_rate: float = 0.001,
-        cooldown_ms: int = 15 * 60 * 1000,
+        entry_cooldown_ms: int = 15 * 60 * 1000,
+        exit_cooldown_ms: int = 5 * 60 * 1000,
         use_trend_filter: bool = True,
         use_rsi_filter: bool = True,
         rsi_overbought: float = 70.0,
         rsi_oversold: float = 30.0,
         model_type: str = "logistic_regression",
+        stop_loss_ptc: float | None = 0.02,
+        take_profit_ptc: float | None = 0.04,
+        min_trade_usdt: float = 10.0,
+        min_position_usdt: float = 5.0,
     ) -> dict[str, object]:
         signal_data = self.strategy_service.generate_signal(
             symbol=symbol,
@@ -60,7 +65,7 @@ class PaperTradingService:
             future_steps=future_steps,
             buy_threshold=buy_threshold,
             sell_threshold=sell_threshold,
-            cooldown_ms=cooldown_ms,
+            cooldown_ms=max(entry_cooldown_ms, exit_cooldown_ms),
             use_trend_filter=use_trend_filter,
             use_rsi_filter=use_rsi_filter,
             rsi_overbought=rsi_overbought,
@@ -74,6 +79,25 @@ class PaperTradingService:
         price = float(signal_data["close"])
         timestamp = int(signal_data["timestamp"])
 
+        exit_reason = None
+
+        if portfolio.asset_balance > 0 and portfolio.average_entry_price is not None:
+            avg_entry = float(portfolio.average_entry_price)
+
+            if stop_loss_ptc is not None:
+                stop_loss_price = avg_entry * (1 - stop_loss_ptc)
+                if price <= stop_loss_price:
+                    exit_reason = "stop_loss"
+                    signal = "SELL"
+                    price = stop_loss_price
+
+            if take_profit_ptc is not None and exit_reason is None:
+                take_profit_price = avg_entry * (1 + take_profit_ptc)
+                if price >= take_profit_price:
+                    exit_reason = "take_profit"
+                    signal = "SELL"
+                    price = take_profit_price
+
         executed = False
         action = "NO_ACTION"
         amount = 0.0
@@ -82,54 +106,72 @@ class PaperTradingService:
 
         if signal == "BUY" and portfolio.usdt_balance > 0:
             usdt_to_spend = portfolio.usdt_balance * trade_fraction
-            fee = usdt_to_spend * fee_rate
-            net_usdt_to_spend = usdt_to_spend - fee
 
-            if net_usdt_to_spend > 0:
-                bought_amount = net_usdt_to_spend / price
+            if usdt_to_spend >= min_trade_usdt:
+                fee = usdt_to_spend * fee_rate
+                net_usdt_to_spend = usdt_to_spend - fee
 
-                previous_asset_balance = portfolio.asset_balance
-                previous_avg_price = portfolio.average_entry_price
+                if net_usdt_to_spend > 0:
+                    bought_amount = net_usdt_to_spend / price
 
-                portfolio.usdt_balance -= usdt_to_spend
-                portfolio.asset_balance += bought_amount
+                    previous_asset_balance = portfolio.asset_balance
+                    previous_avg_price = portfolio.average_entry_price
 
-                if previous_asset_balance <= 0 or previous_avg_price is None:
-                    portfolio.average_entry_price = price
-                else:
-                    total_cost_before = previous_asset_balance * previous_avg_price
-                    total_cost_new = bought_amount * price
-                    total_asset_after = previous_asset_balance + bought_amount
-                    portfolio.average_entry_price = (
-                        total_cost_before + total_cost_new
-                    ) / total_asset_after
+                    portfolio.usdt_balance -= usdt_to_spend
+                    portfolio.asset_balance += bought_amount
 
-                amount = bought_amount
-                executed = True
-                action = "BUY"
+                    if previous_asset_balance <= 0 or previous_avg_price is None:
+                        portfolio.average_entry_price = price
+                    else:
+                        total_cost_before = previous_asset_balance * previous_avg_price
+                        total_cost_new = bought_amount * price
+                        total_asset_after = previous_asset_balance + bought_amount
+                        portfolio.average_entry_price = (
+                            total_cost_before + total_cost_new
+                        ) / total_asset_after
+
+                    amount = bought_amount
+                    executed = True
+                    action = "BUY"
 
         elif signal == "SELL" and portfolio.asset_balance > 0:
             asset_to_sell = portfolio.asset_balance * trade_fraction
+            trade_value_usdt = asset_to_sell * price
 
-            if asset_to_sell > 0:
-                gross_usdt = asset_to_sell * price
-                fee = gross_usdt * fee_rate
-                net_usdt = gross_usdt - fee
+            if trade_value_usdt >= min_trade_usdt:
+                remaining_asset = portfolio.asset_balance - asset_to_sell
+                remaining_position_usdt = remaining_asset * price
 
-                avg_entry = portfolio.average_entry_price or price
-                realized_pnl_delta = (price - avg_entry) * asset_to_sell - fee
+                if 0 < remaining_position_usdt < min_position_usdt:
+                    asset_to_sell = portfolio.asset_balance
+                    trade_value_usdt = asset_to_sell * price
 
-                portfolio.asset_balance -= asset_to_sell
-                portfolio.usdt_balance += net_usdt
-                portfolio.realized_pnl += realized_pnl_delta
+                    if trade_value_usdt >= min_trade_usdt:
+                        remaining_asset = portfolio.asset_balance - asset_to_sell
+                        remaining_position_usdt = remaining_asset * price
 
-                if portfolio.asset_balance <= 1e-12:
-                    portfolio.asset_balance = 0.0
-                    portfolio.average_entry_price = None
+                        if 0 < remaining_position_usdt < min_position_usdt:
+                            asset_to_sell = portfolio.asset_balance
+                            trade_value_usdt = asset_to_sell * price
 
-                amount = asset_to_sell
-                executed = True
-                action = "SELL"
+                        gross_usdt = asset_to_sell * price
+                        fee = gross_usdt * fee_rate
+                        net_usdt = gross_usdt - fee
+
+                        avg_entry = portfolio.average_entry_price or price
+                        realized_pnl_delta = (price - avg_entry) * asset_to_sell - fee
+
+                        portfolio.asset_balance -= asset_to_sell
+                        portfolio.usdt_balance += net_usdt
+                        portfolio.realized_pnl += realized_pnl_delta
+
+                        if portfolio.asset_balance <= 1e-12:
+                            portfolio.asset_balance = 0.0
+                            portfolio.average_entry_price = None
+
+                        amount = asset_to_sell
+                        executed = True
+                        action = "SELL"
 
         portfolio.updated_at = int(time.time() * 1000)
 
@@ -186,6 +228,9 @@ class PaperTradingService:
                 "position_value": position_value,
                 "portfolio_value": portfolio_value,
                 "updated_at": portfolio.updated_at,
+                "exit_reason": exit_reason,
+                "min_trade_usdt": min_trade_usdt,
+                "min_position_usdt": min_position_usdt,
             },
             "trade_id": trade_record.id if trade_record else None,
         }

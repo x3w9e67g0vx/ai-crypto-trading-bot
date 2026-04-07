@@ -241,9 +241,14 @@ def run_backtest(
     use_rsi_filter: bool = Query(default=True),
     rsi_overbought: float = Query(default=70.0, gt=0.0, lt=100.0),
     rsi_oversold: float = Query(default=30.0, gt=0.0, lt=100.0),
-    cooldown_bars: int = Query(default=3, ge=0, le=100),
+    entry_cooldown_bars: int = Query(default=3, ge=0),
+    exit_cooldown_bars: int = Query(default=1, ge=0),
     model_type: str = Query(default="logistic_regression"),
     db: Session = Depends(get_db),
+    stop_loss_ptc: float | None = Query(default=0.02, ge=0.0, lt=1.0),
+    take_profit_ptc: float | None = Query(default=0.04, ge=0.0, lt=1.0),
+    min_trade_usdt: float = Query(default=10.0, ge=0.0),
+    min_position_usdt: float = Query(default=5.0, ge=0.0),
 ) -> dict[str, object]:
     service = BacktestService(db)
     return service.run_backtest(
@@ -261,8 +266,13 @@ def run_backtest(
         use_rsi_filter=use_rsi_filter,
         rsi_overbought=rsi_overbought,
         rsi_oversold=rsi_oversold,
-        cooldown_bars=cooldown_bars,
+        entry_cooldown_bars=entry_cooldown_bars,
+        exit_cooldown_bars=exit_cooldown_bars,
         model_type=model_type,
+        stop_loss_pct=stop_loss_ptc,
+        take_profit_pct=take_profit_ptc,
+        min_trade_usdt=min_trade_usdt,
+        min_position_usdt=min_position_usdt,
     )
 
 
@@ -547,6 +557,10 @@ def execute_paper_trade(
     rsi_oversold: float = Query(default=30.0, gt=0.0, lt=100.0),
     model_type: str = Query(default="logistic_regression"),
     db: Session = Depends(get_db),
+    stop_loss_ptc: float | None = Query(default=0.02, ge=0.0, lt=1.0),
+    take_profit_ptc: float | None = Query(default=0.04, ge=0.0, lt=1.0),
+    min_trade_usdt: float = Query(default=10.0, ge=0.0),
+    min_position_usdt: float = Query(default=5.0, ge=0.0),
 ) -> dict[str, object]:
     service = PaperTradingService(db)
     return service.execute_latest_signal(
@@ -565,6 +579,10 @@ def execute_paper_trade(
         rsi_overbought=rsi_overbought,
         rsi_oversold=rsi_oversold,
         model_type=model_type,
+        stop_loss_ptc=stop_loss_ptc,
+        take_profit_ptc=take_profit_ptc,
+        min_trade_usdt=min_trade_usdt,
+        min_position_usdt=min_position_usdt,
     )
 
 

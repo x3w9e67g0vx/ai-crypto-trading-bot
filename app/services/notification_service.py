@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy.orm import Session
 
 from app.services.paper_trading_service import PaperTradingService
@@ -100,6 +102,13 @@ class NotificationService:
 
         return True, message
 
+    def format_timestamp_ms(self, timestamp_ms: int | None) -> str:
+        if not timestamp_ms:
+            return "n/a"
+
+        dt = datetime.fromtimestamp(timestamp_ms / 1000)
+        return dt.strftime("%Y-%m-%d %H:%M")
+
     def format_multi_symbol_signals_summary(
         self,
         symbols: list[str],
@@ -161,12 +170,14 @@ class NotificationService:
             close_price = float(item["close"])
             rsi = item.get("rsi")
             reasons = item.get("reasons", [])
+            ts_text = self.format_timestamp_ms(item.get("timestamp"))
 
             reason_text = ", ".join(reasons[:2]) if reasons else "no reasons"
             rsi_text = f"{float(rsi):.2f}" if rsi is not None else "n/a"
 
             lines.append(
                 f"{symbol} — {signal}\n"
+                f"Time: {ts_text}\n"
                 f"Price: {close_price:.4f}\n"
                 f"ProbUp: {probability_up:.4f}\n"
                 f"RSI: {rsi_text}\n"
@@ -210,9 +221,11 @@ class NotificationService:
         rsi = result.get("rsi")
         rsi_text = f"{float(rsi):.2f}" if rsi is not None else "n/a"
         reasons = ", ".join(result.get("reasons", [])) or "no reasons"
+        ts_text = self.format_timestamp_ms(result.get("timestamp"))
 
         return (
             f"📈 Signal [{result['symbol']}] ({result['timeframe']})\n"
+            f"Time: {ts_text}\n"
             f"Signal: {result['signal']}\n"
             f"Price: {float(result['close']):.4f}\n"
             f"ProbUp: {float(result['probability_up']):.4f}\n"
@@ -246,11 +259,13 @@ class NotificationService:
                 continue
 
             for signal in signals:
+                ts_text = self.format_timestamp_ms(signal.get("timestamp"))
+
                 lines.append(
                     f"  {signal['signal']} | "
                     f"price={float(signal['price']):.4f} | "
                     f"conf={float(signal['confidence']):.4f} | "
-                    f"ts={signal['timestamp']}"
+                    f"time={ts_text}"
                 )
 
             lines.append("")

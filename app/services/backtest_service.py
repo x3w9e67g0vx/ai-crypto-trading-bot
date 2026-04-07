@@ -26,8 +26,13 @@ class BacktestService:
         use_rsi_filter: bool = True,
         rsi_overbought: float = 70.0,
         rsi_oversold: float = 30.0,
-        cooldown_bars: int = 3,
+        entry_cooldown_bars: int = 3,
+        exit_cooldown_bars: int = 1,
         model_type: str = "logistic_regression",
+        stop_loss_pct: float | None = 0.02,
+        take_profit_pct: float | None = 0.04,
+        min_trade_usdt: float = 10.0,
+        min_position_usdt: float = 5.0,
     ) -> dict[str, object]:
         model = self.ml_model_service.load_model(model_type=model_type)
         X, y, df = self.ml_model_service.prepare_features_and_target(
@@ -49,7 +54,8 @@ class BacktestService:
         trades = []
         equity_curve = []
 
-        last_action_index = -10_000
+        last_buy_index = -10_000
+        last_sell_index = -10_000
 
         buy_count = 0
         sell_count = 0
@@ -90,58 +96,87 @@ class BacktestService:
             elif sell_candidate:
                 signal = "SELL"
 
-            if signal in {"BUY", "SELL"} and (i - last_action_index) < cooldown_bars:
+            if signal == "BUY" and (i - last_buy_index) < entry_cooldown_bars:
                 signal = "HOLD"
+
+            if signal == "SELL" and (i - last_sell_index) < exit_cooldown_bars:
+                signal = "HOLD"
+
+            exit_reason = None
+
+            if asset_balance > 0 and average_entry_price is not None:
+                if stop_loss_pct is not None:
+                    stop_loss_price = average_entry_price * (1 - stop_loss_pct)
+                    if price < stop_loss_price:
+                        signal = "SELL"
+                        exit_reason = "stop_loss"
+                if take_profit_pct is not None and exit_reason is not None:
+                    take_profit_price = average_entry_price * (1 + take_profit_pct)
+                    if price > take_profit_price:
+                        signal = "SELL"
+                        exit_reason = "take_profit"
 
             executed = False
             realized_pnl_delta = 0.0
 
             if signal == "BUY" and usdt_balance > 0:
                 usdt_to_spend = usdt_balance * trade_fraction
-                fee = usdt_to_spend * fee_rate
-                net_usdt = usdt_to_spend - fee
 
-                if net_usdt > 0:
-                    bought_amount = net_usdt / price
+                if usdt_to_spend >= min_trade_usdt:
+                    fee = usdt_to_spend * fee_rate
+                    net_usdt = usdt_to_spend - fee
 
-                    previous_asset_balance = asset_balance
-                    previous_avg_price = average_entry_price
+                    if net_usdt > 0:
+                        bought_amount = net_usdt / price
 
-                    usdt_balance -= usdt_to_spend
-                    asset_balance += bought_amount
+                        previous_asset_balance = asset_balance
+                        previous_avg_price = average_entry_price
 
-                    if previous_asset_balance <= 0 or previous_avg_price is None:
-                        average_entry_price = price
-                    else:
-                        total_cost_before = previous_asset_balance * previous_avg_price
-                        total_cost_new = bought_amount * price
-                        total_asset_after = previous_asset_balance + bought_amount
-                        average_entry_price = (
-                            total_cost_before + total_cost_new
-                        ) / total_asset_after
+                        usdt_balance -= usdt_to_spend
+                        asset_balance += bought_amount
 
-                    executed = True
-                    last_action_index = i
-                    buy_count += 1
+                        if previous_asset_balance <= 0 or previous_avg_price is None:
+                            average_entry_price = price
+                        else:
+                            total_cost_before = (
+                                previous_asset_balance * previous_avg_price
+                            )
+                            total_cost_new = bought_amount * price
+                            total_asset_after = previous_asset_balance + bought_amount
+                            average_entry_price = (
+                                total_cost_before + total_cost_new
+                            ) / total_asset_after
 
-                    trades.append(
-                        {
-                            "timestamp": timestamp,
-                            "side": "BUY",
-                            "price": price,
-                            "amount": bought_amount,
-                            "fee": fee,
-                            "probability_up": probability_up,
-                            "rsi": rsi,
-                            "ema_fast": ema_fast,
-                            "ema_slow": ema_slow,
-                        }
-                    )
+                        executed = True
+                        last_buy_index = i
+                        buy_count += 1
+
+                        trades.append(
+                            {
+                                "timestamp": timestamp,
+                                "side": "BUY",
+                                "price": price,
+                                "amount": bought_amount,
+                                "fee": fee,
+                                "probability_up": probability_up,
+                                "rsi": rsi,
+                                "ema_fast": ema_fast,
+                                "ema_slow": ema_slow,
+                            }
+                        )
 
             elif signal == "SELL" and asset_balance > 0:
                 asset_to_sell = asset_balance * trade_fraction
+                trade_value_usdt = asset_to_sell * price
 
-                if asset_to_sell > 0:
+                if trade_value_usdt >= min_trade_usdt:
+                    remaining_asset = asset_balance - asset_to_sell
+                    remaining_position_usdt = remaining_asset * price
+
+                    if 0 < remaining_position_usdt < min_position_usdt:
+                        asset_to_sell = asset_balance
+                        trade_value_usdt = asset_to_sell * price
+
                     gross_usdt = asset_to_sell * price
                     fee = gross_usdt * fee_rate
                     net_usdt = gross_usdt - fee
@@ -163,7 +198,7 @@ class BacktestService:
                         average_entry_price = None
 
                     executed = True
-                    last_action_index = i
+                    last_sell_index = i
                     sell_count += 1
 
                     trades.append(
@@ -174,6 +209,7 @@ class BacktestService:
                             "amount": asset_to_sell,
                             "fee": fee,
                             "realized_pnl_delta": realized_pnl_delta,
+                            "exit_reason": exit_reason,
                             "probability_up": probability_up,
                             "rsi": rsi,
                             "ema_fast": ema_fast,
@@ -249,6 +285,11 @@ class BacktestService:
             "sell_threshold": sell_threshold,
             "use_trend_filter": use_trend_filter,
             "use_rsi_filter": use_rsi_filter,
-            "cooldown_bars": cooldown_bars,
+            "entry_cooldown_bars": entry_cooldown_bars,
+            "exit_cooldown_bars": exit_cooldown_bars,
             "preview_trades": trades[-10:],
+            "stop_loss_pct": stop_loss_pct,
+            "take_profit_pct": take_profit_pct,
+            "min_trade_usdt": min_trade_usdt,
+            "min_position_usdt": min_position_usdt,
         }
