@@ -432,6 +432,64 @@ def search_symbols(
     }
 
 
+@app.get("/backtest/compare-models")
+def compare_backtest_models(
+    symbol: str = Query(default="BTC/USDT"),
+    timeframe: str = Query(default="5m"),
+    model_types: str = Query(default="logistic_regression,random_forest"),
+    lag_periods: int = Query(default=3, ge=1, le=50),
+    future_steps: int = Query(default=3, ge=1, le=50),
+    target_threshold: float = Query(default=0.002, ge=0.0, lt=1.0),
+    buy_threshold: float = Query(default=0.6, gt=0.0, lt=1.0),
+    sell_threshold: float = Query(default=0.4, gt=0.0, lt=1.0),
+    initial_usdt: float = Query(default=1000.0, gt=0.0),
+    trade_fraction: float = Query(default=0.1, gt=0.0, le=1.0),
+    fee_rate: float = Query(default=0.001, ge=0.0, lt=1.0),
+    use_trend_filter: bool = Query(default=True),
+    use_rsi_filter: bool = Query(default=True),
+    rsi_overbought: float = Query(default=70.0, gt=0.0, lt=100.0),
+    rsi_oversold: float = Query(default=30.0, gt=0.0, lt=100.0),
+    stop_loss_pct: float | None = Query(default=0.02, ge=0.0, lt=1.0),
+    take_profit_pct: float | None = Query(default=0.04, ge=0.0, lt=1.0),
+    min_trade_usdt: float = Query(default=10.0, ge=0.0),
+    min_position_usdt: float = Query(default=5.0, ge=0.0),
+    entry_cooldown_bars: int = Query(default=3, ge=0),
+    exit_cooldown_bars: int = Query(default=1, ge=0),
+    max_position_fraction: float = Query(default=0.3, gt=0.0, le=1.0),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    service = BacktestService(db)
+
+    parsed_model_types = [
+        item.strip() for item in model_types.split(",") if item.strip()
+    ]
+
+    return service.compare_models(
+        symbol=symbol,
+        timeframe=timeframe,
+        model_types=parsed_model_types,
+        lag_periods=lag_periods,
+        future_steps=future_steps,
+        target_threshold=target_threshold,
+        buy_threshold=buy_threshold,
+        sell_threshold=sell_threshold,
+        initial_usdt=initial_usdt,
+        trade_fraction=trade_fraction,
+        fee_rate=fee_rate,
+        use_trend_filter=use_trend_filter,
+        use_rsi_filter=use_rsi_filter,
+        rsi_overbought=rsi_overbought,
+        rsi_oversold=rsi_oversold,
+        stop_loss_pct=stop_loss_pct,
+        take_profit_pct=take_profit_pct,
+        min_trade_usdt=min_trade_usdt,
+        min_position_usdt=min_position_usdt,
+        entry_cooldown_bars=entry_cooldown_bars,
+        exit_cooldown_bars=exit_cooldown_bars,
+        max_position_fraction=max_position_fraction,
+    )
+
+
 @app.post("/ingest/ohlcv")
 def ingest_ohlcv(
     symbol: str = Query(default="BTC/USDT"),

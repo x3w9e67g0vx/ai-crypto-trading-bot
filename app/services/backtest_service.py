@@ -334,3 +334,72 @@ class BacktestService:
             "min_position_usdt": min_position_usdt,
             "max_position_fraction": max_position_fraction,
         }
+
+    def compare_models(
+        self,
+        symbol: str,
+        timeframe: str,
+        model_types: list[str],
+        lag_periods: int = 3,
+        future_steps: int = 3,
+        target_threshold: float = 0.002,
+        buy_threshold: float = 0.6,
+        sell_threshold: float = 0.4,
+        initial_usdt: float = 1000.0,
+        trade_fraction: float = 0.1,
+        fee_rate: float = 0.001,
+        use_trend_filter: bool = True,
+        use_rsi_filter: bool = True,
+        rsi_overbought: float = 70.0,
+        rsi_oversold: float = 30.0,
+        stop_loss_pct: float | None = 0.02,
+        take_profit_pct: float | None = 0.04,
+        min_trade_usdt: float = 10.0,
+        min_position_usdt: float = 5.0,
+        entry_cooldown_bars: int = 3,
+        exit_cooldown_bars: int = 1,
+        max_position_fraction: float = 0.3,
+    ) -> dict[str, object]:
+        results = []
+
+        for model_type in model_types:
+            result = self.run_backtest(
+                symbol=symbol,
+                timeframe=timeframe,
+                lag_periods=lag_periods,
+                future_steps=future_steps,
+                target_threshold=target_threshold,
+                buy_threshold=buy_threshold,
+                sell_threshold=sell_threshold,
+                initial_usdt=initial_usdt,
+                trade_fraction=trade_fraction,
+                fee_rate=fee_rate,
+                use_trend_filter=use_trend_filter,
+                use_rsi_filter=use_rsi_filter,
+                rsi_overbought=rsi_overbought,
+                rsi_oversold=rsi_oversold,
+                model_type=model_type,
+                stop_loss_pct=stop_loss_pct,
+                take_profit_pct=take_profit_pct,
+                min_trade_usdt=min_trade_usdt,
+                min_position_usdt=min_position_usdt,
+                entry_cooldown_bars=entry_cooldown_bars,
+                exit_cooldown_bars=exit_cooldown_bars,
+                max_position_fraction=max_position_fraction,
+            )
+
+            results.append(result)
+
+        winner = None
+        if results:
+            winner = max(results, key=lambda x: float(x["final_balance"]))
+
+        return {
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "model_count": len(model_types),
+            "models": model_types,
+            "winner_model_type": winner["model_type"] if winner else None,
+            "winner_final_balance": winner["final_balance"] if winner else None,
+            "results": results,
+        }
