@@ -249,6 +249,7 @@ def run_backtest(
     take_profit_ptc: float | None = Query(default=0.04, ge=0.0, lt=1.0),
     min_trade_usdt: float = Query(default=10.0, ge=0.0),
     min_position_usdt: float = Query(default=5.0, ge=0.0),
+    max_position_fraction: float = Query(default=0.3, gt=0.0, le=1.0),
 ) -> dict[str, object]:
     service = BacktestService(db)
     return service.run_backtest(
@@ -273,6 +274,7 @@ def run_backtest(
         take_profit_pct=take_profit_ptc,
         min_trade_usdt=min_trade_usdt,
         min_position_usdt=min_position_usdt,
+        max_position_fraction=max_position_fraction,
     )
 
 
@@ -561,6 +563,7 @@ def execute_paper_trade(
     take_profit_ptc: float | None = Query(default=0.04, ge=0.0, lt=1.0),
     min_trade_usdt: float = Query(default=10.0, ge=0.0),
     min_position_usdt: float = Query(default=5.0, ge=0.0),
+    max_position_fraction: float = Query(default=0.3, gt=0.0, le=1.0),
 ) -> dict[str, object]:
     service = PaperTradingService(db)
     return service.execute_latest_signal(
@@ -573,7 +576,8 @@ def execute_paper_trade(
         sell_threshold=sell_threshold,
         trade_fraction=trade_fraction,
         fee_rate=fee_rate,
-        cooldown_ms=cooldown_ms,
+        entry_cooldown_ms=cooldown_ms,
+        exit_cooldown_ms=cooldown_ms,
         use_trend_filter=use_trend_filter,
         use_rsi_filter=use_rsi_filter,
         rsi_overbought=rsi_overbought,
@@ -583,6 +587,7 @@ def execute_paper_trade(
         take_profit_ptc=take_profit_ptc,
         min_trade_usdt=min_trade_usdt,
         min_position_usdt=min_position_usdt,
+        max_position_fraction=max_position_fraction,
     )
 
 

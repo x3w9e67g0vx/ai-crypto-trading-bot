@@ -57,6 +57,7 @@ class PaperTradingService:
         take_profit_ptc: float | None = 0.04,
         min_trade_usdt: float = 10.0,
         min_position_usdt: float = 5.0,
+        max_position_fraction: float = 0.3,
     ) -> dict[str, object]:
         signal_data = self.strategy_service.generate_signal(
             symbol=symbol,
@@ -105,34 +106,44 @@ class PaperTradingService:
         realized_pnl_delta = 0.0
 
         if signal == "BUY" and portfolio.usdt_balance > 0:
-            usdt_to_spend = portfolio.usdt_balance * trade_fraction
+            position_value = portfolio.asset_balance * price
+            portfolio_value = portfolio.usdt_balance + position_value
 
-            if usdt_to_spend >= min_trade_usdt:
-                fee = usdt_to_spend * fee_rate
-                net_usdt_to_spend = usdt_to_spend - fee
+            max_position_value = portfolio_value * max_position_fraction
+            remaining_position_capacity = max_position_value - position_value
 
-                if net_usdt_to_spend > 0:
-                    bought_amount = net_usdt_to_spend / price
+            if remaining_position_capacity > 0:
+                usdt_to_spend = portfolio.usdt_balance * trade_fraction
+                usdt_to_spend = min(usdt_to_spend, remaining_position_capacity)
 
-                    previous_asset_balance = portfolio.asset_balance
-                    previous_avg_price = portfolio.average_entry_price
+                if usdt_to_spend >= min_trade_usdt:
+                    fee = usdt_to_spend * fee_rate
+                    net_usdt_to_spend = usdt_to_spend - fee
 
-                    portfolio.usdt_balance -= usdt_to_spend
-                    portfolio.asset_balance += bought_amount
+                    if net_usdt_to_spend > 0:
+                        bought_amount = net_usdt_to_spend / price
 
-                    if previous_asset_balance <= 0 or previous_avg_price is None:
-                        portfolio.average_entry_price = price
-                    else:
-                        total_cost_before = previous_asset_balance * previous_avg_price
-                        total_cost_new = bought_amount * price
-                        total_asset_after = previous_asset_balance + bought_amount
-                        portfolio.average_entry_price = (
-                            total_cost_before + total_cost_new
-                        ) / total_asset_after
+                        previous_asset_balance = portfolio.asset_balance
+                        previous_avg_price = portfolio.average_entry_price
 
-                    amount = bought_amount
-                    executed = True
-                    action = "BUY"
+                        portfolio.usdt_balance -= usdt_to_spend
+                        portfolio.asset_balance += bought_amount
+
+                        if previous_asset_balance <= 0 or previous_avg_price is None:
+                            portfolio.average_entry_price = price
+                        else:
+                            total_cost_before = (
+                                previous_asset_balance * previous_avg_price
+                            )
+                            total_cost_new = bought_amount * price
+                            total_asset_after = previous_asset_balance + bought_amount
+                            portfolio.average_entry_price = (
+                                total_cost_before + total_cost_new
+                            ) / total_asset_after
+
+                        amount = bought_amount
+                        executed = True
+                        action = "BUY"
 
         elif signal == "SELL" and portfolio.asset_balance > 0:
             asset_to_sell = portfolio.asset_balance * trade_fraction
@@ -218,6 +229,7 @@ class PaperTradingService:
             "amount": amount,
             "fee": fee,
             "realized_pnl_delta": realized_pnl_delta,
+            "exit_reason": exit_reason,
             "portfolio": {
                 "symbol": portfolio.symbol,
                 "usdt_balance": portfolio.usdt_balance,
@@ -228,9 +240,9 @@ class PaperTradingService:
                 "position_value": position_value,
                 "portfolio_value": portfolio_value,
                 "updated_at": portfolio.updated_at,
-                "exit_reason": exit_reason,
                 "min_trade_usdt": min_trade_usdt,
                 "min_position_usdt": min_position_usdt,
+                "max_position_fraction": max_position_fraction,
             },
             "trade_id": trade_record.id if trade_record else None,
         }
