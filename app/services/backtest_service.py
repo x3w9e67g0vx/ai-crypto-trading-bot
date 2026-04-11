@@ -110,12 +110,13 @@ class BacktestService:
             if asset_balance > 0 and average_entry_price is not None:
                 if stop_loss_pct is not None:
                     stop_loss_price = average_entry_price * (1 - stop_loss_pct)
-                    if price < stop_loss_price:
+                    if price <= stop_loss_price:
                         signal = "SELL"
                         exit_reason = "stop_loss"
-                if take_profit_pct is not None and exit_reason is not None:
+
+                if take_profit_pct is not None and exit_reason is None:
                     take_profit_price = average_entry_price * (1 + take_profit_pct)
-                    if price > take_profit_price:
+                    if price >= take_profit_price:
                         signal = "SELL"
                         exit_reason = "take_profit"
 

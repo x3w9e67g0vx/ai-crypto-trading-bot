@@ -32,6 +32,11 @@ def get_help_text() -> str:
         "/signal_btc — сигнал по BTC/USDT\n"
         "/signal_eth — сигнал по ETH/USDT\n"
         "/signal_sol — сигнал по SOL/USDT\n"
+        "/signal_btc_lstm — сигнал LSTM по BTC/USDT\n"
+        "/signal_eth_lstm — сигнал LSTM по ETH/USDT\n"
+        "/signal_sol_lstm — сигнал LSTM по SOL/USDT\n"
+        "/signals_lstm — actionable summary по default symbols через LSTM\n"
+        "/scan_all_lstm — summary по default symbols через LSTM, включая HOLD\n"
         "/portfolio — paper portfolio BTC/USDT\n"
         "/trades — последние сделки BTC/USDT\n"
         "/last_signals — последние сохранённые сигналы по default symbols\n"
@@ -423,6 +428,103 @@ async def find_handler(message: Message) -> None:
 
 async def main() -> None:
     await dp.start_polling(bot)
+
+
+@dp.message(Command("signals_lstm"))
+async def signals_lstm_handler(message: Message) -> None:
+    db = SessionLocal()
+    try:
+        service = NotificationService(db)
+        should_send, text = service.format_multi_symbol_signals_summary(
+            symbols=settings.get_default_symbols(),
+            timeframe="5m",
+            model_type="lstm",
+            actionable_only=True,
+            use_trend_filter=False,
+            use_rsi_filter=False,
+            buy_threshold=0.55,
+            sell_threshold=0.2,
+        )
+        await message.answer(text)
+    finally:
+        db.close()
+
+
+@dp.message(Command("scan_all_lstm"))
+async def scan_all_lstm_handler(message: Message) -> None:
+    db = SessionLocal()
+    try:
+        service = NotificationService(db)
+        _, text = service.format_multi_symbol_signals_summary(
+            symbols=settings.get_default_symbols(),
+            timeframe="5m",
+            model_type="lstm",
+            actionable_only=False,
+            use_trend_filter=False,
+            use_rsi_filter=False,
+            buy_threshold=0.55,
+            sell_threshold=0.2,
+        )
+        await message.answer(text)
+    finally:
+        db.close()
+
+
+@dp.message(Command("signal_btc_lstm"))
+async def signal_btc_lstm_handler(message: Message) -> None:
+    db = SessionLocal()
+    try:
+        service = NotificationService(db)
+        text = service.format_single_symbol_signal_message(
+            symbol="BTC/USDT",
+            timeframe="5m",
+            model_type="lstm",
+            use_trend_filter=False,
+            use_rsi_filter=False,
+            buy_threshold=0.55,
+            sell_threshold=0.2,
+        )
+        await message.answer(text)
+    finally:
+        db.close()
+
+
+@dp.message(Command("signal_eth_lstm"))
+async def signal_eth_lstm_handler(message: Message) -> None:
+    db = SessionLocal()
+    try:
+        service = NotificationService(db)
+        text = service.format_single_symbol_signal_message(
+            symbol="ETH/USDT",
+            timeframe="5m",
+            model_type="lstm",
+            use_trend_filter=False,
+            use_rsi_filter=False,
+            buy_threshold=0.55,
+            sell_threshold=0.2,
+        )
+        await message.answer(text)
+    finally:
+        db.close()
+
+
+@dp.message(Command("signal_sol_lstm"))
+async def signal_sol_lstm_handler(message: Message) -> None:
+    db = SessionLocal()
+    try:
+        service = NotificationService(db)
+        text = service.format_single_symbol_signal_message(
+            symbol="SOL/USDT",
+            timeframe="5m",
+            model_type="lstm",
+            use_trend_filter=False,
+            use_rsi_filter=False,
+            buy_threshold=0.55,
+            sell_threshold=0.2,
+        )
+        await message.answer(text)
+    finally:
+        db.close()
 
 
 if __name__ == "__main__":

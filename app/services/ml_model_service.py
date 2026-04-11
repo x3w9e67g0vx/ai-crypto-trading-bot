@@ -5,7 +5,7 @@ from pathlib import Path
 
 import joblib
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     accuracy_score,
@@ -109,6 +109,14 @@ class MLModelService:
                 n_jobs=-1,
             )
             model_name = "RandomForest"
+        elif model_type == "gradient_boosting":
+            model = GradientBoostingClassifier(
+                n_estimators=100,
+                learning_rate=0.1,
+                max_depth=3,
+                random_state=42,
+            )
+            model_name = "GradientBoosting"
         else:
             return {
                 "status": "error",

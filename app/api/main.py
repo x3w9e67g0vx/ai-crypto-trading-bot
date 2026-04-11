@@ -15,11 +15,13 @@ from app.db.session import engine
 from app.services.backtest_service import BacktestService
 from app.services.indicator_service import IndicatorService
 from app.services.ingestion_service import IngestionService
+from app.services.lstm_model_service import LSTMModelService
 from app.services.market_data_service import MarketDataService
 from app.services.ml_dataset_service import MLDatasetService
 from app.services.ml_model_service import MLModelService
 from app.services.notification_service import NotificationService
 from app.services.paper_trading_service import PaperTradingService
+from app.services.research_service import ResearchService
 from app.services.strategy_service import StrategyService
 from app.services.subscription_service import SubscriptionService
 from app.services.telegram_service import TelegramService
@@ -486,6 +488,98 @@ def compare_backtest_models(
         min_position_usdt=min_position_usdt,
         entry_cooldown_bars=entry_cooldown_bars,
         exit_cooldown_bars=exit_cooldown_bars,
+        max_position_fraction=max_position_fraction,
+    )
+
+
+@app.get("/strategy/signal/latest-lstm")
+def get_latest_lstm_signal(
+    symbol: str = Query(default="BTC/USDT"),
+    timeframe: str = Query(default="5m"),
+    lag_periods: int = Query(default=3, ge=1, le=50),
+    future_steps: int = Query(default=3, ge=1, le=50),
+    target_threshold: float = Query(default=0.002, ge=0.0, lt=1.0),
+    buy_threshold: float = Query(default=0.6, gt=0.0, lt=1.0),
+    sell_threshold: float = Query(default=0.4, gt=0.0, lt=1.0),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    service = LSTMModelService(db)
+    result = service.predict_latest_probability(
+        symbol=symbol,
+        timeframe=timeframe,
+        lag_periods=lag_periods,
+        future_steps=future_steps,
+        target_threshold=target_threshold,
+    )
+
+    signal = "HOLD"
+    reasons: list[str] = []
+
+    probability_up = float(result["probability_up"])
+
+    if probability_up >= buy_threshold:
+        signal = "BUY"
+        reasons.append("probability_up_above_buy_threshold")
+    elif probability_up <= sell_threshold:
+        signal = "SELL"
+        reasons.append("probability_up_below_sell_threshold")
+    else:
+        reasons.append("probability_in_hold_zone")
+
+    result["signal"] = signal
+    result["buy_threshold"] = buy_threshold
+    result["sell_threshold"] = sell_threshold
+    result["reasons"] = reasons
+    return result
+
+
+@app.get("/backtest/run-lstm")
+def run_lstm_backtest(
+    symbol: str = Query(default="BTC/USDT"),
+    timeframe: str = Query(default="5m"),
+    lag_periods: int = Query(default=3, ge=1, le=50),
+    future_steps: int = Query(default=3, ge=1, le=50),
+    target_threshold: float = Query(default=0.002, ge=0.0, lt=1.0),
+    buy_threshold: float = Query(default=0.6, gt=0.0, lt=1.0),
+    sell_threshold: float = Query(default=0.4, gt=0.0, lt=1.0),
+    initial_usdt: float = Query(default=1000.0, gt=0.0),
+    trade_fraction: float = Query(default=0.1, gt=0.0, le=1.0),
+    fee_rate: float = Query(default=0.001, ge=0.0, lt=1.0),
+    use_trend_filter: bool = Query(default=True),
+    use_rsi_filter: bool = Query(default=True),
+    rsi_overbought: float = Query(default=70.0, gt=0.0, lt=100.0),
+    rsi_oversold: float = Query(default=30.0, gt=0.0, lt=100.0),
+    entry_cooldown_bars: int = Query(default=3, ge=0),
+    exit_cooldown_bars: int = Query(default=1, ge=0),
+    stop_loss_pct: float | None = Query(default=0.02, ge=0.0, lt=1.0),
+    take_profit_pct: float | None = Query(default=0.04, ge=0.0, lt=1.0),
+    min_trade_usdt: float = Query(default=10.0, ge=0.0),
+    min_position_usdt: float = Query(default=5.0, ge=0.0),
+    max_position_fraction: float = Query(default=0.3, gt=0.0, le=1.0),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    service = LSTMModelService(db)
+    return service.run_lstm_backtest(
+        symbol=symbol,
+        timeframe=timeframe,
+        lag_periods=lag_periods,
+        future_steps=future_steps,
+        target_threshold=target_threshold,
+        buy_threshold=buy_threshold,
+        sell_threshold=sell_threshold,
+        initial_usdt=initial_usdt,
+        trade_fraction=trade_fraction,
+        fee_rate=fee_rate,
+        use_trend_filter=use_trend_filter,
+        use_rsi_filter=use_rsi_filter,
+        rsi_overbought=rsi_overbought,
+        rsi_oversold=rsi_oversold,
+        entry_cooldown_bars=entry_cooldown_bars,
+        exit_cooldown_bars=exit_cooldown_bars,
+        stop_loss_pct=stop_loss_pct,
+        take_profit_pct=take_profit_pct,
+        min_trade_usdt=min_trade_usdt,
+        min_position_usdt=min_position_usdt,
         max_position_fraction=max_position_fraction,
     )
 
@@ -1055,4 +1149,52 @@ def send_subscription_summaries_to_telegram(
         "sent_count": sent_count,
         "skipped_count": skipped_count,
         "results": results,
+    }
+
+
+@app.post("/ml/train-lstm")
+def train_lstm_model(
+    symbol: str = Query(...),
+    timeframe: str = Query(default="5m"),
+    lag_periods: int = Query(default=3, ge=1, le=50),
+    future_steps: int = Query(default=3, ge=1, le=50),
+    target_threshold: float = Query(default=0.002, ge=0.0, lt=1.0),
+    sequence_length: int = Query(default=30, ge=5, le=200),
+    epochs: int = Query(default=20, ge=1, le=500),
+    batch_size: int = Query(default=32, ge=1, le=1024),
+    learning_rate: float = Query(default=0.001, gt=0.0, lt=1.0),
+    hidden_size: int = Query(default=64, ge=8, le=512),
+    num_layers: int = Query(default=2, ge=1, le=8),
+    dropout: float = Query(default=0.2, ge=0.0, lt=1.0),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    service = LSTMModelService(db)
+    result = service.train_lstm(
+        symbol=symbol,
+        timeframe=timeframe,
+        lag_periods=lag_periods,
+        future_steps=future_steps,
+        target_threshold=target_threshold,
+        sequence_length=sequence_length,
+        epochs=epochs,
+        batch_size=batch_size,
+        learning_rate=learning_rate,
+        hidden_size=hidden_size,
+        num_layers=num_layers,
+        dropout=dropout,
+    )
+
+    return {
+        "status": "ok",
+        "model_type": "lstm",
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "rows": result.rows,
+        "train_rows": result.train_rows,
+        "test_rows": result.test_rows,
+        "sequence_length": result.sequence_length,
+        "metrics": result.metrics,
+        "model_path": result.model_path,
+        "scaler_path": result.scaler_path,
+        "features": result.feature_columns,
     }

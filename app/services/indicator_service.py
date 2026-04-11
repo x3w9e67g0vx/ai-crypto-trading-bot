@@ -42,15 +42,11 @@ class IndicatorService:
 
         df = df.copy()
 
-        # EMA
-        #
         df["ema_fast"] = df["close"].ewm(span=12, adjust=False).mean()
         df["ema_slow"] = df["close"].ewm(span=26, adjust=False).mean()
 
-        # MACD
         df["macd"] = df["ema_fast"] - df["ema_slow"]
 
-        # RSI
         delta = df["close"].diff()
         gain = delta.clip(lower=0)
         loss = -delta.clip(upper=0)
@@ -61,7 +57,6 @@ class IndicatorService:
         rs = avg_gain / avg_loss.replace(0, pd.NA)
         df["rsi"] = 100 - (100 / (1 + rs))
 
-        # Bollinger Bands
         rolling_mean = df["close"].rolling(window=20).mean()
         rolling_std = df["close"].rolling(window=20).std()
 
