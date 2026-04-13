@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import requests
 from sqlalchemy.orm import Session
 
+from app.core.model_profiles import get_model_profile, set_model_profile
 from app.services.paper_trading_service import PaperTradingService
+from app.services.strategy_profile_service import StrategyProfileService
 from app.services.strategy_service import StrategyService
+from app.services.subscription_service import SubscriptionService
 
 
 class NotificationService:
@@ -13,6 +17,7 @@ class NotificationService:
         self.db = db
         self.strategy_service = StrategyService(db)
         self.paper_trading_service = PaperTradingService(db)
+        self.strategy_profile_service = StrategyProfileService(db)
 
     def format_last_signal_message(
         self,
@@ -202,30 +207,42 @@ class NotificationService:
         rsi_oversold: float = 30.0,
         model_type: str = "logistic_regression",
     ) -> str:
-        result = self.strategy_service.generate_signal(
-            symbol=symbol,
-            timeframe=timeframe,
-            lag_periods=lag_periods,
-            future_steps=future_steps,
-            target_threshold=target_threshold,
-            buy_threshold=buy_threshold,
-            sell_threshold=sell_threshold,
-            cooldown_ms=cooldown_ms,
-            use_trend_filter=use_trend_filter,
-            use_rsi_filter=use_rsi_filter,
-            rsi_overbought=rsi_overbought,
-            rsi_oversold=rsi_oversold,
-            model_type=model_type,
-        )
+        if model_type == "lstm":
+            result = self._get_lstm_signal_via_api(
+                symbol=symbol,
+                timeframe=timeframe,
+                lag_periods=lag_periods,
+                future_steps=future_steps,
+                target_threshold=target_threshold,
+                buy_threshold=buy_threshold,
+                sell_threshold=sell_threshold,
+                use_trend_filter=use_trend_filter,
+                use_rsi_filter=use_rsi_filter,
+            )
+        else:
+            result = self.strategy_service.generate_signal(
+                symbol=symbol,
+                timeframe=timeframe,
+                lag_periods=lag_periods,
+                future_steps=future_steps,
+                target_threshold=target_threshold,
+                buy_threshold=buy_threshold,
+                sell_threshold=sell_threshold,
+                cooldown_ms=cooldown_ms,
+                use_trend_filter=use_trend_filter,
+                use_rsi_filter=use_rsi_filter,
+                rsi_overbought=rsi_overbought,
+                rsi_oversold=rsi_oversold,
+                model_type=model_type,
+            )
 
         rsi = result.get("rsi")
         rsi_text = f"{float(rsi):.2f}" if rsi is not None else "n/a"
         reasons = ", ".join(result.get("reasons", [])) or "no reasons"
-        ts_text = self.format_timestamp_ms(result.get("timestamp"))
 
         return (
             f"📈 Signal [{result['symbol']}] ({result['timeframe']})\n"
-            f"Time: {ts_text}\n"
+            f"Model: {result['model_type']}\n"
             f"Signal: {result['signal']}\n"
             f"Price: {float(result['close']):.4f}\n"
             f"ProbUp: {float(result['probability_up']):.4f}\n"
@@ -287,10 +304,9 @@ class NotificationService:
         use_rsi_filter: bool = True,
         rsi_overbought: float = 70.0,
         rsi_oversold: float = 30.0,
-        model_type: str = "logistic_regression",
+        model_type: str = "auto",
         actionable_only: bool = True,
     ) -> tuple[bool, str, list[str]]:
-        from app.services.subscription_service import SubscriptionService
 
         sub_service = SubscriptionService(self.db)
         symbols = sub_service.get_symbols_for_chat(chat_id)
@@ -352,3 +368,101 @@ class NotificationService:
             lines.append(f"- {symbol}")
 
         return "\n".join(lines)
+
+    def _get_lstm_signal_via_api(
+        self,
+        symbol: str,
+        timeframe: str,
+        lag_periods: int = 3,
+        future_steps: int = 3,
+        target_threshold: float = 0.002,
+        buy_threshold: float = 0.55,
+        sell_threshold: float = 0.2,
+        use_trend_filter: bool = False,
+        use_rsi_filter: bool = False,
+    ) -> dict[str, object]:
+        response = requests.get(
+            "http://localhost:8000/strategy/signal/latest-lstm",
+            params={
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "lag_periods": lag_periods,
+                "future_steps": future_steps,
+                "target_threshold": target_threshold,
+                "buy_threshold": buy_threshold,
+                "sell_threshold": sell_threshold,
+                "use_trend_filter": use_trend_filter,
+                "use_rsi_filter": use_rsi_filter,
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def format_strategy_profile_message(
+        self, symbol: str, chat_id: int | None = None
+    ) -> str:
+        profile = self.strategy_profile_service.get_profile(
+            symbol=symbol, chat_id=chat_id
+        )
+
+        return (
+            f"⚙️ Strategy profile [{symbol}]\n"
+            f"Model: {profile['model_type']}\n"
+            f"Target threshold: {profile['target_threshold']}\n"
+            f"Buy threshold: {profile['buy_threshold']}\n"
+            f"Sell threshold: {profile['sell_threshold']}\n"
+            f"Trend filter: {profile['use_trend_filter']}\n"
+            f"RSI filter: {profile['use_rsi_filter']}\n"
+            f"Cooldown ms: {profile['cooldown_ms']}\n"
+            f"Stop loss: {profile['stop_loss_pct']}\n"
+            f"Take profit: {profile['take_profit_pct']}\n"
+            f"Min trade USDT: {profile['min_trade_usdt']}\n"
+            f"Min position USDT: {profile['min_position_usdt']}\n"
+            f"Max position fraction: {profile['max_position_fraction']}"
+        )
+
+    def update_symbol_profile(
+        self,
+        symbol: str,
+        model_type: str,
+        buy_threshold: float,
+        sell_threshold: float,
+        use_trend_filter: bool,
+        use_rsi_filter: bool,
+        target_threshold: float = 0.002,
+        cooldown_ms: int = 0,
+        stop_loss_pct: float = 0.02,
+        take_profit_pct: float = 0.04,
+        min_trade_usdt: float = 10.0,
+        min_position_usdt: float = 5.0,
+        max_position_fraction: float = 0.3,
+        chat_id: int | None = None,
+    ) -> str:
+        profile = self.strategy_profile_service.set_profile(
+            symbol=symbol,
+            profile_data={
+                "model_type": model_type,
+                "buy_threshold": buy_threshold,
+                "sell_threshold": sell_threshold,
+                "use_trend_filter": use_trend_filter,
+                "use_rsi_filter": use_rsi_filter,
+                "target_threshold": target_threshold,
+                "cooldown_ms": cooldown_ms,
+                "stop_loss_pct": stop_loss_pct,
+                "take_profit_pct": take_profit_pct,
+                "min_trade_usdt": min_trade_usdt,
+                "min_position_usdt": min_position_usdt,
+                "max_position_fraction": max_position_fraction,
+            },
+            chat_id=chat_id,
+        )
+
+        return (
+            f"✅ Profile updated [{symbol}]\n"
+            f"Model: {profile['model_type']}\n"
+            f"Buy threshold: {profile['buy_threshold']}\n"
+            f"Sell threshold: {profile['sell_threshold']}\n"
+            f"Trend filter: {profile['use_trend_filter']}\n"
+            f"RSI filter: {profile['use_rsi_filter']}"
+        )

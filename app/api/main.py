@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.model_profiles import get_model_profile, set_model_profile
 from app.db import models
 from app.db.base import Base
 from app.db.dependencies import get_db
@@ -20,8 +21,9 @@ from app.services.market_data_service import MarketDataService
 from app.services.ml_dataset_service import MLDatasetService
 from app.services.ml_model_service import MLModelService
 from app.services.notification_service import NotificationService
+from app.services.paper_trade_log_service import PaperTradeLogService
 from app.services.paper_trading_service import PaperTradingService
-from app.services.research_service import ResearchService
+from app.services.strategy_profile_service import StrategyProfileService
 from app.services.strategy_service import StrategyService
 from app.services.subscription_service import SubscriptionService
 from app.services.telegram_service import TelegramService
@@ -584,6 +586,57 @@ def run_lstm_backtest(
     )
 
 
+@app.get("/strategy/profile")
+def get_strategy_profile(
+    symbol: str = Query(...),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    service = StrategyProfileService(db)
+    profile = service.get_profile(symbol)
+
+    return {
+        "status": "ok",
+        "symbol": symbol,
+        "profile": profile,
+    }
+
+
+@app.get("/paper-trading/logs")
+def get_paper_trade_logs(
+    symbol: str | None = Query(default=None),
+    chat_id: int | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=200),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    service = PaperTradeLogService(db)
+    rows = service.get_recent_logs(symbol=symbol, chat_id=chat_id, limit=limit)
+
+    return {
+        "count": len(rows),
+        "logs": [
+            {
+                "id": row.id,
+                "chat_id": row.chat_id,
+                "symbol": row.symbol,
+                "timeframe": row.timeframe,
+                "model_type": row.model_type,
+                "signal": row.signal,
+                "action": row.action,
+                "executed": row.executed,
+                "price": row.price,
+                "amount": row.amount,
+                "fee": row.fee,
+                "realized_pnl_delta": row.realized_pnl_delta,
+                "probability_up": row.probability_up,
+                "probability_down": row.probability_down,
+                "exit_reason": row.exit_reason,
+                "created_at": row.created_at,
+            }
+            for row in rows
+        ],
+    }
+
+
 @app.post("/ingest/ohlcv")
 def ingest_ohlcv(
     symbol: str = Query(default="BTC/USDT"),
@@ -1076,7 +1129,7 @@ def send_subscription_summaries_to_telegram(
     use_rsi_filter: bool = Query(default=True),
     rsi_overbought: float = Query(default=70.0, gt=0.0, lt=100.0),
     rsi_oversold: float = Query(default=30.0, gt=0.0, lt=100.0),
-    model_type: str = Query(default="logistic_regression"),
+    model_type: str = Query(default="auto"),
     actionable_only: bool = Query(default=True),
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
@@ -1197,4 +1250,47 @@ def train_lstm_model(
         "model_path": result.model_path,
         "scaler_path": result.scaler_path,
         "features": result.feature_columns,
+    }
+
+
+@app.post("/strategy/profile")
+def update_strategy_profile(
+    symbol: str = Query(...),
+    model_type: str = Query(...),
+    buy_threshold: float = Query(default=0.6, gt=0.0, lt=1.0),
+    sell_threshold: float = Query(default=0.4, gt=0.0, lt=1.0),
+    use_trend_filter: bool = Query(default=True),
+    use_rsi_filter: bool = Query(default=True),
+    target_threshold: float = Query(default=0.002, ge=0.0, lt=1.0),
+    cooldown_ms: int = Query(default=0, ge=0),
+    stop_loss_pct: float = Query(default=0.02, ge=0.0, lt=1.0),
+    take_profit_pct: float = Query(default=0.04, ge=0.0, lt=1.0),
+    min_trade_usdt: float = Query(default=10.0, ge=0.0),
+    min_position_usdt: float = Query(default=5.0, ge=0.0),
+    max_position_fraction: float = Query(default=0.3, gt=0.0, le=1.0),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    service = StrategyProfileService(db)
+    profile = service.set_profile(
+        symbol=symbol,
+        profile_data={
+            "model_type": model_type,
+            "buy_threshold": buy_threshold,
+            "sell_threshold": sell_threshold,
+            "use_trend_filter": use_trend_filter,
+            "use_rsi_filter": use_rsi_filter,
+            "target_threshold": target_threshold,
+            "cooldown_ms": cooldown_ms,
+            "stop_loss_pct": stop_loss_pct,
+            "take_profit_pct": take_profit_pct,
+            "min_trade_usdt": min_trade_usdt,
+            "min_position_usdt": min_position_usdt,
+            "max_position_fraction": max_position_fraction,
+        },
+    )
+
+    return {
+        "status": "ok",
+        "symbol": symbol,
+        "profile": profile,
     }

@@ -5,6 +5,7 @@ import time
 from sqlalchemy.orm import Session
 
 from app.db.models import PortfolioState, Trade
+from app.services.paper_trade_log_service import PaperTradeLogService
 from app.services.strategy_service import StrategyService
 
 
@@ -12,6 +13,7 @@ class PaperTradingService:
     def __init__(self, db: Session) -> None:
         self.db = db
         self.strategy_service = StrategyService(db)
+        self.paper_trade_log_service = PaperTradeLogService(db)
 
     def get_or_create_portfolio(self, symbol: str) -> PortfolioState:
         portfolio = (
@@ -219,6 +221,57 @@ class PaperTradingService:
 
         position_value = portfolio.asset_balance * price
         portfolio_value = portfolio.usdt_balance + position_value
+
+        self.paper_trade_log_service.create_log(
+            chat_id=None,
+            symbol=symbol,
+            timeframe=timeframe,
+            model_type=model_type,
+            signal=str(signal_data["signal"]),
+            action=str(action),
+            executed=bool(executed),
+            price=float(price),
+            amount=float(amount),
+            fee=float(fee),
+            realized_pnl_delta=float(realized_pnl_delta),
+            probability_up=float(signal_data["probability_up"])
+            if signal_data.get("probability_up") is not None
+            else None,
+            probability_down=float(signal_data["probability_down"])
+            if signal_data.get("probability_down") is not None
+            else None,
+            rsi=float(signal_data["rsi"])
+            if signal_data.get("rsi") is not None
+            else None,
+            ema_fast=float(signal_data["ema_fast"])
+            if signal_data.get("ema_fast") is not None
+            else None,
+            ema_slow=float(signal_data["ema_slow"])
+            if signal_data.get("ema_slow") is not None
+            else None,
+            macd=float(signal_data["macd"])
+            if signal_data.get("macd") is not None
+            else None,
+            buy_threshold=float(signal_data["buy_threshold"])
+            if signal_data.get("buy_threshold") is not None
+            else None,
+            sell_threshold=float(signal_data["sell_threshold"])
+            if signal_data.get("sell_threshold") is not None
+            else None,
+            use_trend_filter=bool(signal_data["use_trend_filter"])
+            if signal_data.get("use_trend_filter") is not None
+            else None,
+            use_rsi_filter=bool(signal_data["use_rsi_filter"])
+            if signal_data.get("use_rsi_filter") is not None
+            else None,
+            stop_loss_pct=stop_loss_pct,
+            take_profit_pct=take_profit_pct,
+            min_trade_usdt=min_trade_usdt,
+            min_position_usdt=min_position_usdt,
+            max_position_fraction=max_position_fraction,
+            trade_id=trade_id,
+            exit_reason=exit_reason,
+        )
 
         return {
             "status": "ok",

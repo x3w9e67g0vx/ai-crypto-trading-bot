@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
+from app.core.model_profiles import get_model_profile
 from app.db.models import Signal
 from app.services.lstm_model_service import LSTMModelService
 from app.services.ml_model_service import MLModelService
+from app.services.strategy_profile_service import StrategyProfileService
 
 
 class StrategyService:
@@ -12,6 +14,7 @@ class StrategyService:
         self.db = db
         self.ml_model_service = MLModelService(db)
         self.lstm_model_service = LSTMModelService(db)
+        self.strategy_profile_service = StrategyProfileService(db)
 
     def get_recent_signals_multiple(
         self,
@@ -78,6 +81,25 @@ class StrategyService:
         rsi_oversold: float = 30.0,
         model_type: str = "logistic_regression",
     ) -> dict[str, object]:
+        resolved = self.resolve_model_config(
+            symbol=symbol,
+            model_type=model_type,
+            target_threshold=target_threshold,
+            buy_threshold=buy_threshold,
+            sell_threshold=sell_threshold,
+            cooldown_ms=cooldown_ms,
+            use_trend_filter=use_trend_filter,
+            use_rsi_filter=use_rsi_filter,
+        )
+
+        model_type = str(resolved["model_type"])
+        target_threshold = float(resolved["target_threshold"])
+        buy_threshold = float(resolved["buy_threshold"])
+        sell_threshold = float(resolved["sell_threshold"])
+        cooldown_ms = int(resolved["cooldown_ms"])
+        use_trend_filter = bool(resolved["use_trend_filter"])
+        use_rsi_filter = bool(resolved["use_rsi_filter"])
+
         if model_type == "lstm":
             lstm_result = self.lstm_model_service.predict_latest_probability(
                 symbol=symbol,
@@ -126,6 +148,7 @@ class StrategyService:
             model_type=model_type,
             target_threshold=target_threshold,
         )
+
         if df.empty:
             raise ValueError(f"No data available for {symbol} {timeframe}")
 
@@ -515,4 +538,42 @@ class StrategyService:
             "rsi_overbought": rsi_overbought,
             "rsi_oversold": rsi_oversold,
             "reasons": reasons,
+        }
+
+    def resolve_model_config(
+        self,
+        symbol: str,
+        model_type: str,
+        target_threshold: float,
+        buy_threshold: float,
+        sell_threshold: float,
+        cooldown_ms: int,
+        use_trend_filter: bool,
+        use_rsi_filter: bool,
+        chat_id: int | None = None,
+    ) -> dict[str, object]:
+        if model_type != "auto":
+            return {
+                "model_type": model_type,
+                "target_threshold": target_threshold,
+                "buy_threshold": buy_threshold,
+                "sell_threshold": sell_threshold,
+                "cooldown_ms": cooldown_ms,
+                "use_trend_filter": use_trend_filter,
+                "use_rsi_filter": use_rsi_filter,
+            }
+
+        profile = self.strategy_profile_service.get_profile(
+            symbol=symbol,
+            chat_id=chat_id,
+        )
+
+        return {
+            "model_type": profile["model_type"],
+            "target_threshold": profile["target_threshold"],
+            "buy_threshold": profile["buy_threshold"],
+            "sell_threshold": profile["sell_threshold"],
+            "cooldown_ms": profile["cooldown_ms"],
+            "use_trend_filter": profile["use_trend_filter"],
+            "use_rsi_filter": profile["use_rsi_filter"],
         }

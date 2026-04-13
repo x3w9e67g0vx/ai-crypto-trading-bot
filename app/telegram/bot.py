@@ -35,6 +35,14 @@ def get_help_text() -> str:
         "/signal_btc_lstm — сигнал LSTM по BTC/USDT\n"
         "/signal_eth_lstm — сигнал LSTM по ETH/USDT\n"
         "/signal_sol_lstm — сигнал LSTM по SOL/USDT\n"
+        "/signal_btc_auto — авто-сигнал по BTC/USDT\n"
+        "/signal_eth_auto — авто-сигнал по ETH/USDT\n"
+        "/signal_sol_auto — авто-сигнал по SOL/USDT\n"
+        "/signal <symbol> — сигнал по паре, например /signal BTC/USDT\n"
+        "/profile <symbol> — активный профиль пары, например /profile BTC/USDT\n"
+        "/set_model <symbol> <model> — сменить модель, например /set_model BTC/USDT lstm\n"
+        "/signals_auto — actionable summary через auto profiles\n"
+        "/scan_all_auto — summary через auto profiles, включая HOLD\n"
         "/signals_lstm — actionable summary по default symbols через LSTM\n"
         "/scan_all_lstm — summary по default symbols через LSTM, включая HOLD\n"
         "/portfolio — paper portfolio BTC/USDT\n"
@@ -49,6 +57,13 @@ def get_help_text() -> str:
         "/unsubscribe_eth — отписаться от ETH/USDT\n"
         "/unsubscribe_sol — отписаться от SOL/USDT\n"
         "/my_symbols — мои подписки\n"
+        "/profile_btc — активный профиль BTC/USDT\n"
+        "/profile_eth — активный профиль ETH/USDT\n"
+        "/profile_sol — активный профиль SOL/USDT\n"
+        "/set_btc_lstm — переключить BTC/USDT на LSTM\n"
+        "/set_btc_rf — переключить BTC/USDT на Random Forest\n"
+        "/set_eth_rf — переключить ETH/USDT на Random Forest\n"
+        "/set_sol_rf — переключить SOL/USDT на Random Forest\n"
     )
 
 
@@ -435,7 +450,7 @@ async def signals_lstm_handler(message: Message) -> None:
     db = SessionLocal()
     try:
         service = NotificationService(db)
-        should_send, text = service.format_multi_symbol_signals_summary(
+        _, text = service.format_multi_symbol_signals_summary(
             symbols=settings.get_default_symbols(),
             timeframe="5m",
             model_type="lstm",
@@ -522,6 +537,394 @@ async def signal_sol_lstm_handler(message: Message) -> None:
             buy_threshold=0.55,
             sell_threshold=0.2,
         )
+        await message.answer(text)
+    finally:
+        db.close()
+
+
+@dp.message(Command("signals_auto"))
+async def signals_auto_handler(message: Message) -> None:
+    db = SessionLocal()
+    try:
+        service = NotificationService(db)
+        _, text = service.format_multi_symbol_signals_summary(
+            symbols=settings.get_default_symbols(),
+            timeframe="5m",
+            model_type="auto",
+            actionable_only=True,
+        )
+        await message.answer(text)
+    finally:
+        db.close()
+
+
+@dp.message(Command("scan_all_auto"))
+async def scan_all_auto_handler(message: Message) -> None:
+    db = SessionLocal()
+    try:
+        service = NotificationService(db)
+        _, text = service.format_multi_symbol_signals_summary(
+            symbols=settings.get_default_symbols(),
+            timeframe="5m",
+            model_type="auto",
+            actionable_only=False,
+        )
+        await message.answer(text)
+    finally:
+        db.close()
+
+
+@dp.message(Command("signal_btc_auto"))
+async def signal_btc_auto_handler(message: Message) -> None:
+    db = SessionLocal()
+    try:
+        service = NotificationService(db)
+        text = service.format_single_symbol_signal_message(
+            symbol="BTC/USDT",
+            timeframe="5m",
+            model_type="auto",
+        )
+        await message.answer(text)
+    finally:
+        db.close()
+
+
+@dp.message(Command("signal_eth_auto"))
+async def signal_eth_auto_handler(message: Message) -> None:
+    db = SessionLocal()
+    try:
+        service = NotificationService(db)
+        text = service.format_single_symbol_signal_message(
+            symbol="ETH/USDT",
+            timeframe="5m",
+            model_type="auto",
+        )
+        await message.answer(text)
+    finally:
+        db.close()
+
+
+@dp.message(Command("signal_sol_auto"))
+async def signal_sol_auto_handler(message: Message) -> None:
+    db = SessionLocal()
+    try:
+        service = NotificationService(db)
+        text = service.format_single_symbol_signal_message(
+            symbol="SOL/USDT",
+            timeframe="5m",
+            model_type="auto",
+        )
+        await message.answer(text)
+    finally:
+        db.close()
+
+
+@dp.message(Command("profile_btc"))
+async def profile_btc_handler(message: Message) -> None:
+    db = SessionLocal()
+    try:
+        service = NotificationService(db)
+        text = service.format_strategy_profile_message("BTC/USDT")
+        await message.answer(text)
+    finally:
+        db.close()
+
+
+@dp.message(Command("profile_eth"))
+async def profile_eth_handler(message: Message) -> None:
+    db = SessionLocal()
+    try:
+        service = NotificationService(db)
+        text = service.format_strategy_profile_message("ETH/USDT")
+        await message.answer(text)
+    finally:
+        db.close()
+
+
+@dp.message(Command("profile_sol"))
+async def profile_sol_handler(message: Message) -> None:
+    db = SessionLocal()
+    try:
+        service = NotificationService(db)
+        text = service.format_strategy_profile_message("SOL/USDT")
+        await message.answer(text)
+    finally:
+        db.close()
+
+
+@dp.message(Command("set_btc_lstm"))
+async def set_btc_lstm_handler(message: Message) -> None:
+    db = SessionLocal()
+    try:
+        service = NotificationService(db)
+        text = service.update_symbol_profile(
+            symbol="BTC/USDT",
+            model_type="lstm",
+            buy_threshold=0.55,
+            sell_threshold=0.2,
+            use_trend_filter=False,
+            use_rsi_filter=False,
+            target_threshold=0.002,
+            cooldown_ms=0,
+            stop_loss_pct=0.02,
+            take_profit_pct=0.04,
+            min_trade_usdt=10.0,
+            min_position_usdt=5.0,
+            max_position_fraction=0.3,
+        )
+        await message.answer(text)
+    finally:
+        db.close()
+
+
+@dp.message(Command("set_btc_rf"))
+async def set_btc_rf_handler(message: Message) -> None:
+    db = SessionLocal()
+    try:
+        service = NotificationService(db)
+        text = service.update_symbol_profile(
+            symbol="BTC/USDT",
+            model_type="random_forest",
+            buy_threshold=0.6,
+            sell_threshold=0.4,
+            use_trend_filter=True,
+            use_rsi_filter=True,
+            target_threshold=0.002,
+            cooldown_ms=0,
+            stop_loss_pct=0.02,
+            take_profit_pct=0.04,
+            min_trade_usdt=10.0,
+            min_position_usdt=5.0,
+            max_position_fraction=0.3,
+        )
+        await message.answer(text)
+    finally:
+        db.close()
+
+
+@dp.message(Command("set_eth_rf"))
+async def set_eth_rf_handler(message: Message) -> None:
+    db = SessionLocal()
+    try:
+        service = NotificationService(db)
+        text = service.update_symbol_profile(
+            symbol="ETH/USDT",
+            model_type="random_forest",
+            buy_threshold=0.6,
+            sell_threshold=0.4,
+            use_trend_filter=True,
+            use_rsi_filter=True,
+            target_threshold=0.002,
+            cooldown_ms=0,
+            stop_loss_pct=0.02,
+            take_profit_pct=0.04,
+            min_trade_usdt=10.0,
+            min_position_usdt=5.0,
+            max_position_fraction=0.3,
+        )
+        await message.answer(text)
+    finally:
+        db.close()
+
+
+@dp.message(Command("set_sol_rf"))
+async def set_sol_rf_handler(message: Message) -> None:
+    db = SessionLocal()
+    try:
+        service = NotificationService(db)
+        text = service.update_symbol_profile(
+            symbol="SOL/USDT",
+            model_type="random_forest",
+            buy_threshold=0.6,
+            sell_threshold=0.4,
+            use_trend_filter=True,
+            use_rsi_filter=True,
+            target_threshold=0.002,
+            cooldown_ms=0,
+            stop_loss_pct=0.02,
+            take_profit_pct=0.04,
+            min_trade_usdt=10.0,
+            min_position_usdt=5.0,
+            max_position_fraction=0.3,
+        )
+        await message.answer(text)
+    finally:
+        db.close()
+
+
+def normalize_symbol_input(raw: str) -> str:
+    value = raw.strip().upper()
+
+    if not value:
+        raise ValueError("Пустой символ")
+
+    value = value.replace(" ", "")
+
+    if "/" in value:
+        return value
+
+    if value.endswith("USDT") and len(value) > 4:
+        base = value[:-4]
+        return f"{base}/USDT"
+
+    raise ValueError(
+        "Неверный формат символа. Используй, например: BTC/USDT или BTCUSDT"
+    )
+
+
+@dp.message(Command("signal"))
+async def signal_dynamic_handler(message: Message) -> None:
+    parts = (message.text or "").split(maxsplit=1)
+
+    if len(parts) < 2:
+        await message.answer("Использование: /signal BTC/USDT")
+        return
+
+    try:
+        symbol = normalize_symbol_input(parts[1])
+    except ValueError as exc:
+        await message.answer(str(exc))
+        return
+
+    db = SessionLocal()
+    try:
+        service = NotificationService(db)
+        text = service.format_single_symbol_signal_message(
+            symbol=symbol,
+            timeframe="5m",
+            model_type="auto",
+        )
+        await message.answer(text)
+    finally:
+        db.close()
+
+
+@dp.message(Command("profile"))
+async def profile_dynamic_handler(message: Message) -> None:
+    parts = (message.text or "").split(maxsplit=1)
+
+    if len(parts) < 2:
+        await message.answer("Использование: /profile BTC/USDT")
+        return
+
+    try:
+        symbol = normalize_symbol_input(parts[1])
+    except ValueError as exc:
+        await message.answer(str(exc))
+        return
+
+    db = SessionLocal()
+    try:
+        service = NotificationService(db)
+        text = service.format_strategy_profile_message(symbol)
+        await message.answer(text)
+    finally:
+        db.close()
+
+
+@dp.message(Command("set_model"))
+async def set_model_dynamic_handler(message: Message) -> None:
+    parts = (message.text or "").split()
+
+    if len(parts) < 3:
+        await message.answer(
+            "Использование: /set_model BTC/USDT lstm\n"
+            "Доступные модели: lstm, random_forest, logistic_regression, gradient_boosting"
+        )
+        return
+
+    raw_symbol = parts[1]
+    raw_model = parts[2].strip().lower()
+
+    try:
+        symbol = normalize_symbol_input(raw_symbol)
+    except ValueError as exc:
+        await message.answer(str(exc))
+        return
+
+    allowed_models = {
+        "lstm",
+        "random_forest",
+        "logistic_regression",
+        "gradient_boosting",
+    }
+
+    if raw_model not in allowed_models:
+        await message.answer(
+            "Неизвестная модель.\n"
+            "Доступные: lstm, random_forest, logistic_regression, gradient_boosting"
+        )
+        return
+
+    db = SessionLocal()
+    try:
+        service = NotificationService(db)
+
+        if raw_model == "lstm":
+            text = service.update_symbol_profile(
+                symbol=symbol,
+                model_type="lstm",
+                buy_threshold=0.55,
+                sell_threshold=0.2,
+                use_trend_filter=False,
+                use_rsi_filter=False,
+                target_threshold=0.002,
+                cooldown_ms=0,
+                stop_loss_pct=0.02,
+                take_profit_pct=0.04,
+                min_trade_usdt=10.0,
+                min_position_usdt=5.0,
+                max_position_fraction=0.3,
+            )
+        elif raw_model == "random_forest":
+            text = service.update_symbol_profile(
+                symbol=symbol,
+                model_type="random_forest",
+                buy_threshold=0.6,
+                sell_threshold=0.4,
+                use_trend_filter=True,
+                use_rsi_filter=True,
+                target_threshold=0.002,
+                cooldown_ms=0,
+                stop_loss_pct=0.02,
+                take_profit_pct=0.04,
+                min_trade_usdt=10.0,
+                min_position_usdt=5.0,
+                max_position_fraction=0.3,
+            )
+        elif raw_model == "logistic_regression":
+            text = service.update_symbol_profile(
+                symbol=symbol,
+                model_type="logistic_regression",
+                buy_threshold=0.6,
+                sell_threshold=0.4,
+                use_trend_filter=True,
+                use_rsi_filter=True,
+                target_threshold=0.002,
+                cooldown_ms=0,
+                stop_loss_pct=0.02,
+                take_profit_pct=0.04,
+                min_trade_usdt=10.0,
+                min_position_usdt=5.0,
+                max_position_fraction=0.3,
+            )
+        else:  # gradient_boosting
+            text = service.update_symbol_profile(
+                symbol=symbol,
+                model_type="gradient_boosting",
+                buy_threshold=0.6,
+                sell_threshold=0.4,
+                use_trend_filter=True,
+                use_rsi_filter=True,
+                target_threshold=0.002,
+                cooldown_ms=0,
+                stop_loss_pct=0.02,
+                take_profit_pct=0.04,
+                min_trade_usdt=10.0,
+                min_position_usdt=5.0,
+                max_position_fraction=0.3,
+            )
+
         await message.answer(text)
     finally:
         db.close()
