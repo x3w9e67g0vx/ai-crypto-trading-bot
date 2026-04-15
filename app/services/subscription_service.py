@@ -106,3 +106,17 @@ class SubscriptionService:
     def get_all_chat_ids(self) -> list[int]:
         rows = self.db.query(TelegramSubscription.chat_id).distinct().all()
         return [int(row[0]) for row in rows]
+
+    def get_all_distinct_symbols(self) -> list[str]:
+        """
+        Return all distinct subscribed symbols across all chats.
+        Useful for multi-chat pipelines to prefetch candles/indicators for every
+        symbol that at least one user subscribed to.
+        """
+        rows = (
+            self.db.query(TelegramSubscription.symbol)
+            .distinct()
+            .order_by(TelegramSubscription.symbol.asc())
+            .all()
+        )
+        return [str(row[0]) for row in rows]

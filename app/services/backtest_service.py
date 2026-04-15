@@ -26,8 +26,14 @@ class BacktestService:
         use_rsi_filter: bool = True,
         rsi_overbought: float = 70.0,
         rsi_oversold: float = 30.0,
-        cooldown_bars: int = 3,
+        entry_cooldown_bars: int = 3,
+        exit_cooldown_bars: int = 1,
         model_type: str = "logistic_regression",
+        stop_loss_pct: float | None = 0.02,
+        take_profit_pct: float | None = 0.04,
+        min_trade_usdt: float = 10.0,
+        min_position_usdt: float = 5.0,
+        max_position_fraction: float = 0.3,
     ) -> dict[str, object]:
         model = self.ml_model_service.load_model(model_type=model_type)
         X, y, df = self.ml_model_service.prepare_features_and_target(
@@ -49,7 +55,8 @@ class BacktestService:
         trades = []
         equity_curve = []
 
-        last_action_index = -10_000
+        last_buy_index = -10_000
+        last_sell_index = -10_000
 
         buy_count = 0
         sell_count = 0
@@ -57,6 +64,8 @@ class BacktestService:
         profitable_trades = 0
         closed_trades = 0
         closed_trade_pnls = []
+        winning_trade_pnls = []
+        losing_trade_pnls = []
 
         for i in range(len(df)):
             row = df.iloc[i]
@@ -90,58 +99,101 @@ class BacktestService:
             elif sell_candidate:
                 signal = "SELL"
 
-            if signal in {"BUY", "SELL"} and (i - last_action_index) < cooldown_bars:
+            if signal == "BUY" and (i - last_buy_index) < entry_cooldown_bars:
                 signal = "HOLD"
+
+            if signal == "SELL" and (i - last_sell_index) < exit_cooldown_bars:
+                signal = "HOLD"
+
+            exit_reason = None
+
+            if asset_balance > 0 and average_entry_price is not None:
+                if stop_loss_pct is not None:
+                    stop_loss_price = average_entry_price * (1 - stop_loss_pct)
+                    if price <= stop_loss_price:
+                        signal = "SELL"
+                        exit_reason = "stop_loss"
+
+                if take_profit_pct is not None and exit_reason is None:
+                    take_profit_price = average_entry_price * (1 + take_profit_pct)
+                    if price >= take_profit_price:
+                        signal = "SELL"
+                        exit_reason = "take_profit"
 
             executed = False
             realized_pnl_delta = 0.0
 
             if signal == "BUY" and usdt_balance > 0:
-                usdt_to_spend = usdt_balance * trade_fraction
-                fee = usdt_to_spend * fee_rate
-                net_usdt = usdt_to_spend - fee
+                position_value = asset_balance * price
+                portfolio_value = usdt_balance + position_value
 
-                if net_usdt > 0:
-                    bought_amount = net_usdt / price
+                max_position_value = portfolio_value * max_position_fraction
+                remaining_position_capacity = max_position_value - position_value
 
-                    previous_asset_balance = asset_balance
-                    previous_avg_price = average_entry_price
+                if remaining_position_capacity > 0:
+                    usdt_to_spend = usdt_balance * trade_fraction
+                    usdt_to_spend = min(usdt_to_spend, remaining_position_capacity)
 
-                    usdt_balance -= usdt_to_spend
-                    asset_balance += bought_amount
+                    if usdt_to_spend >= min_trade_usdt:
+                        fee = usdt_to_spend * fee_rate
+                        net_usdt = usdt_to_spend - fee
 
-                    if previous_asset_balance <= 0 or previous_avg_price is None:
-                        average_entry_price = price
-                    else:
-                        total_cost_before = previous_asset_balance * previous_avg_price
-                        total_cost_new = bought_amount * price
-                        total_asset_after = previous_asset_balance + bought_amount
-                        average_entry_price = (
-                            total_cost_before + total_cost_new
-                        ) / total_asset_after
+                        if net_usdt > 0:
+                            bought_amount = net_usdt / price
 
-                    executed = True
-                    last_action_index = i
-                    buy_count += 1
+                            previous_asset_balance = asset_balance
+                            previous_avg_price = average_entry_price
 
-                    trades.append(
-                        {
-                            "timestamp": timestamp,
-                            "side": "BUY",
-                            "price": price,
-                            "amount": bought_amount,
-                            "fee": fee,
-                            "probability_up": probability_up,
-                            "rsi": rsi,
-                            "ema_fast": ema_fast,
-                            "ema_slow": ema_slow,
-                        }
-                    )
+                            usdt_balance -= usdt_to_spend
+                            asset_balance += bought_amount
+
+                            if (
+                                previous_asset_balance <= 0
+                                or previous_avg_price is None
+                            ):
+                                average_entry_price = price
+                            else:
+                                total_cost_before = (
+                                    previous_asset_balance * previous_avg_price
+                                )
+                                total_cost_new = bought_amount * price
+                                total_asset_after = (
+                                    previous_asset_balance + bought_amount
+                                )
+                                average_entry_price = (
+                                    total_cost_before + total_cost_new
+                                ) / total_asset_after
+
+                            executed = True
+                            last_buy_index = i
+                            buy_count += 1
+
+                            trades.append(
+                                {
+                                    "timestamp": timestamp,
+                                    "side": "BUY",
+                                    "price": price,
+                                    "amount": bought_amount,
+                                    "fee": fee,
+                                    "probability_up": probability_up,
+                                    "rsi": rsi,
+                                    "ema_fast": ema_fast,
+                                    "ema_slow": ema_slow,
+                                }
+                            )
 
             elif signal == "SELL" and asset_balance > 0:
                 asset_to_sell = asset_balance * trade_fraction
+                trade_value_usdt = asset_to_sell * price
 
-                if asset_to_sell > 0:
+                if trade_value_usdt >= min_trade_usdt:
+                    remaining_asset = asset_balance - asset_to_sell
+                    remaining_position_usdt = remaining_asset * price
+
+                    if 0 < remaining_position_usdt < min_position_usdt:
+                        asset_to_sell = asset_balance
+                        trade_value_usdt = asset_to_sell * price
+
                     gross_usdt = asset_to_sell * price
                     fee = gross_usdt * fee_rate
                     net_usdt = gross_usdt - fee
@@ -155,15 +207,19 @@ class BacktestService:
 
                     closed_trades += 1
                     closed_trade_pnls.append(realized_pnl_delta)
+
                     if realized_pnl_delta > 0:
                         profitable_trades += 1
+                        winning_trade_pnls.append(realized_pnl_delta)
+                    elif realized_pnl_delta < 0:
+                        losing_trade_pnls.append(realized_pnl_delta)
 
                     if asset_balance <= 1e-12:
                         asset_balance = 0.0
                         average_entry_price = None
 
                     executed = True
-                    last_action_index = i
+                    last_sell_index = i
                     sell_count += 1
 
                     trades.append(
@@ -174,6 +230,7 @@ class BacktestService:
                             "amount": asset_to_sell,
                             "fee": fee,
                             "realized_pnl_delta": realized_pnl_delta,
+                            "exit_reason": exit_reason,
                             "probability_up": probability_up,
                             "rsi": rsi,
                             "ema_fast": ema_fast,
@@ -220,6 +277,20 @@ class BacktestService:
             else 0.0
         )
 
+        gross_profit = sum(winning_trade_pnls) if winning_trade_pnls else 0.0
+        gross_loss = abs(sum(losing_trade_pnls)) if losing_trade_pnls else 0.0
+
+        avg_win = gross_profit / len(winning_trade_pnls) if winning_trade_pnls else 0.0
+
+        avg_loss = gross_loss / len(losing_trade_pnls) if losing_trade_pnls else 0.0
+
+        profit_factor = gross_profit / gross_loss if gross_loss > 0 else 0.0
+
+        win_rate_ratio = profitable_trades / closed_trades if closed_trades > 0 else 0.0
+        loss_rate_ratio = 1.0 - win_rate_ratio if closed_trades > 0 else 0.0
+
+        expectancy = (win_rate_ratio * avg_win) - (loss_rate_ratio * avg_loss)
+
         return {
             "status": "ok",
             "model_type": model_type,
@@ -242,6 +313,12 @@ class BacktestService:
             "profitable_trades": profitable_trades,
             "win_rate_pct": win_rate,
             "average_closed_trade_pnl": average_closed_trade_pnl,
+            "gross_profit": gross_profit,
+            "gross_loss": gross_loss,
+            "avg_win": avg_win,
+            "avg_loss": avg_loss,
+            "profit_factor": profit_factor,
+            "expectancy": expectancy,
             "max_drawdown_pct": max_drawdown,
             "last_price": final_price,
             "target_threshold": target_threshold,
@@ -249,6 +326,81 @@ class BacktestService:
             "sell_threshold": sell_threshold,
             "use_trend_filter": use_trend_filter,
             "use_rsi_filter": use_rsi_filter,
-            "cooldown_bars": cooldown_bars,
+            "entry_cooldown_bars": entry_cooldown_bars,
+            "exit_cooldown_bars": exit_cooldown_bars,
             "preview_trades": trades[-10:],
+            "stop_loss_pct": stop_loss_pct,
+            "take_profit_pct": take_profit_pct,
+            "min_trade_usdt": min_trade_usdt,
+            "min_position_usdt": min_position_usdt,
+            "max_position_fraction": max_position_fraction,
+        }
+
+    def compare_models(
+        self,
+        symbol: str,
+        timeframe: str,
+        model_types: list[str],
+        lag_periods: int = 3,
+        future_steps: int = 3,
+        target_threshold: float = 0.002,
+        buy_threshold: float = 0.6,
+        sell_threshold: float = 0.4,
+        initial_usdt: float = 1000.0,
+        trade_fraction: float = 0.1,
+        fee_rate: float = 0.001,
+        use_trend_filter: bool = True,
+        use_rsi_filter: bool = True,
+        rsi_overbought: float = 70.0,
+        rsi_oversold: float = 30.0,
+        stop_loss_pct: float | None = 0.02,
+        take_profit_pct: float | None = 0.04,
+        min_trade_usdt: float = 10.0,
+        min_position_usdt: float = 5.0,
+        entry_cooldown_bars: int = 3,
+        exit_cooldown_bars: int = 1,
+        max_position_fraction: float = 0.3,
+    ) -> dict[str, object]:
+        results = []
+
+        for model_type in model_types:
+            result = self.run_backtest(
+                symbol=symbol,
+                timeframe=timeframe,
+                lag_periods=lag_periods,
+                future_steps=future_steps,
+                target_threshold=target_threshold,
+                buy_threshold=buy_threshold,
+                sell_threshold=sell_threshold,
+                initial_usdt=initial_usdt,
+                trade_fraction=trade_fraction,
+                fee_rate=fee_rate,
+                use_trend_filter=use_trend_filter,
+                use_rsi_filter=use_rsi_filter,
+                rsi_overbought=rsi_overbought,
+                rsi_oversold=rsi_oversold,
+                model_type=model_type,
+                stop_loss_pct=stop_loss_pct,
+                take_profit_pct=take_profit_pct,
+                min_trade_usdt=min_trade_usdt,
+                min_position_usdt=min_position_usdt,
+                entry_cooldown_bars=entry_cooldown_bars,
+                exit_cooldown_bars=exit_cooldown_bars,
+                max_position_fraction=max_position_fraction,
+            )
+
+            results.append(result)
+
+        winner = None
+        if results:
+            winner = max(results, key=lambda x: float(x["final_balance"]))
+
+        return {
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "model_count": len(model_types),
+            "models": model_types,
+            "winner_model_type": winner["model_type"] if winner else None,
+            "winner_final_balance": winner["final_balance"] if winner else None,
+            "results": results,
         }

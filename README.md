@@ -278,68 +278,128 @@
 
 ## Запуск локально
 
-### 1. Клонировать репозиторий
+## Запуск локально (единая команда)
+
+Проект состоит из 4 частей:
+
+- Trading PostgreSQL (Docker, из корня проекта)
+- FastAPI backend (host-процесс, uvicorn)
+- Telegram bot (host-процесс)
+- Airflow (Docker, в `airflow/`)
+
+Чтобы запуск был “одной командой”, добавлены скрипты:
+
+### Linux / macOS
 ```bash
-git clone <YOUR_REPO_URL>
-cd ai-crypto-trading-bot
+chmod +x ./scripts/run_all.sh
+./scripts/run_all.sh start
 ```
 
-### 2. Создать виртуальное окружение
+Остановить:
 ```bash
-python -m venv .venv
-source .venv/bin/activate
+./scripts/run_all.sh stop
 ```
 
-### 3. Установить зависимости
+Проверить статус:
 ```bash
-pip install -r requirements.txt
+./scripts/run_all.sh status
 ```
 
-### 4. Поднять PostgreSQL (через Docker)
+Посмотреть логи:
 ```bash
-docker compose up -d
+./scripts/run_all.sh logs api
+./scripts/run_all.sh logs bot
 ```
 
-### 5. Запустить FastAPI
-```bash
-uvicorn app.api.main:app --host 0.0.0.0 --port 8000 --reload
+### Windows (PowerShell)
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run_all.ps1 start
 ```
 
-### 6. Swagger UI
+Остановить:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run_all.ps1 stop
 ```
-http://localhost:8000/docs
+
+Статус:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run_all.ps1 status
 ```
+
+Логи:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run_all.ps1 logs api
+powershell -ExecutionPolicy Bypass -File .\scripts\run_all.ps1 logs bot
+```
+
+### Что делает unified runner
+
+- `docker compose up -d` в корне проекта (trading Postgres)
+- `docker compose up -d` в `airflow/` (Airflow webserver + scheduler + airflow-postgres metadata DB)
+- запускает FastAPI (uvicorn) как фоновый процесс на хосте
+- запускает Telegram bot как фоновый процесс на хосте
+
+Файлы, которые создаёт runner:
+
+- PID-файлы: `./.run/uvicorn.pid`, `./.run/telegram_bot.pid`
+- логи: `./run_logs/fastapi.log`, `./run_logs/telegram_bot.log`
+
+Полезные адреса:
+
+- FastAPI: `http://localhost:8000`
+- Swagger: `http://localhost:8000/docs`
+- Airflow UI: `http://localhost:8080`
 
 ---
 
-## Запуск Telegram-бота
-```bash
-python -m app.telegram.bot
-```
+## Airflow DAGs: как они настроены (важно для сдачи)
+
+DAG-и ходят в FastAPI по HTTP из контейнера Airflow.
+
+По умолчанию используется `http://host.docker.internal:8000` (через `extra_hosts` в `airflow/docker-compose.yml`),
+но рекомендуется явно задавать base URL через переменную окружения:
+
+- `TRADING_API_BASE_URL=http://host.docker.internal:8000`
+
+DAG-и также поддерживают совместимость со старым именем:
+
+- `TRADING_BOT_API_BASE_URL=http://host.docker.internal:8000`
+
+Пайплайн `market_pipeline` (каждые 5 минут) делает:
+
+1) `POST /ingest/update-multiple` — обновление свечей  
+2) `POST /indicators/calculate-multiple` — расчёт индикаторов  
+3) `POST /strategy/signals/generate-and-save-multiple` — генерация и сохранение сигналов  
+4) `POST /telegram/send/subscription-summaries` — персонализированные summary по подпискам (multi-chat)
 
 ---
 
-## Запуск Airflow
-```bash
-cd airflow
-docker compose up -d
-```
+## Конфигурация (.env)
 
-Airflow UI:
-```
-http://localhost:8080
-```
+Проект использует переменные окружения. Для локального запуска удобнее хранить их в `./.env`
+(подхватывается через `python-dotenv`).
 
----
+### База данных (trading_db)
+- `POSTGRES_USER` (default: `postgres`)
+- `POSTGRES_PASSWORD` (default: `postgres`)
+- `POSTGRES_DB` (default: `trading_db`)
+- `POSTGRES_HOST` (default: `localhost`)
+- `POSTGRES_PORT` (default: `5432`)
 
-## Конфигурация
+### Telegram
+- `TELEGRAM_BOT_TOKEN` (обязательно для бота и Telegram-уведомлений из API)
+- `TELEGRAM_CHAT_ID` (опционально, используется для одиночных “send to one chat” endpoint’ов)
+- `DEFAULT_SYMBOLS` (например: `BTC/USDT,ETH/USDT,SOL/USDT`)
 
-Проект использует переменные окружения:
+### Airflow → FastAPI (из контейнера)
+- `TRADING_API_BASE_URL` (рекомендуется)
+- `TRADING_BOT_API_BASE_URL` (fallback)
 
-- `DATABASE_URL`
-- `TELEGRAM_BOT_TOKEN`
-- `TELEGRAM_CHAT_ID`
-- `DEFAULT_SYMBOLS`
+### Диагностика
+- `SQLALCHEMY_ECHO` (default: `false`) — включить SQL-логирование при отладке
+
+### Mini App (опционально, можно позже)
+- `MINIAPP_URL` (публичный HTTPS URL, требуется для Telegram Mini App)
 
 ---
 
