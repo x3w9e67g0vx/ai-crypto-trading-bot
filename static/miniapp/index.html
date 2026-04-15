@@ -1,0 +1,1192 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover"
+    /></head>
+    <meta name="color-scheme" content="light dark" />
+    <title>AI Crypto Trading Bot — Mini App</title>
+
+    <!-- Telegram Mini App SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+    <style>
+      :root</title></style> {
+        /* Fallback palette (used if Telegram theme params are unavailable) */
+        --bg: #0b0f17;
+        --secondary-bg: rgba(255, 255, 255, 0.06);
+        --card: rgba(255, 255, 255, 0.06);
+        --card2: rgba(255, 255, 255, 0.08);
+
+        --text: rgba(255, 255, 255, 0.92);
+        --hint: rgba(255, 255, 255, 0.64);
+        --border: rgba(255, 255, 255, 0.12);
+        --shadow: rgba(0, 0, 0, 0.28);
+
+        --link: #5aa7ff;
+        --button: #5aa7ff;
+        --button-text: #ffffff;
+
+        --danger: #ff5a5a;
+        --ok: #27d17f;
+
+        --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+          "Courier New", monospace;
+        --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      }
+
+      /* Telegram theme mapping (set from JS) */
+      :root {
+        --tg-bg: var(--bg);
+        --tg-secondary-bg: var(--secondary-bg);
+        --tg-text: var(--text);
+        --tg-hint: var(--hint);
+        --tg-link: var(--link);
+        --tg-button: var(--button);
+        --tg-button-text: var(--button-text);
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: var(--tg-bg);
+        color: var(--tg-text);
+        font-family: var(--sans);
+      }
+
+      a {
+        color: var(--tg-link);
+        text-decoration: none;
+      }
+
+      .wrap {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: calc(12px + env(safe-area-inset-top)) 12px
+          calc(86px + env(safe-area-inset-bottom));
+        box-sizing: border-box;
+      }
+
+      .header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: var(--tg-secondary-bg);
+        box-shadow: 0 12px 30px var(--shadow);
+      }
+
+      .title {
+        display: grid;
+        gap: 6px;
+        min-width: 0;
+      }
+
+      .title h1 {
+        font-size: 16px;
+        line-height: 1.2;
+        margin: 0;
+        font-weight: 900;
+      }
+
+      .title .sub {
+        font-size: 12px;
+        line-height: 1.45;
+        color: var(--tg-hint);
+      }
+
+      .status {
+        display: grid;
+        gap: 8px;
+        text-align: right;
+        min-width: 280px;
+        font-size: 12px;
+        color: var(--tg-hint);
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        padding: 6px 10px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: rgba(0, 0, 0, 0.12);
+        white-space: nowrap;
+      }
+
+      .pill strong {
+        color: var(--tg-text);
+        font-weight: 900;
+      }
+
+      .grid {
+        display: grid;
+        gap: 12px;
+        margin-top: 12px;
+      }
+
+      @media (min-width: 920px) {
+        .grid {
+          grid-template-columns: 1.1fr 0.9fr;
+          align-items: start;
+        }
+      }
+
+      .card {
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: var(--card);
+        box-shadow: 0 12px 30px var(--shadow);
+        overflow: hidden;
+      }
+
+      .card-h {
+        padding: 12px;
+        border-bottom: 1px solid var(--border);
+        background: var(--card2);
+      }
+
+      .card-h h2 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 900;
+        line-height: 1.25;
+      }
+
+      .card-h p {
+        margin: 4px 0 0;
+        font-size: 12px;
+        color: var(--tg-hint);
+        line-height: 1.45;
+      }
+
+      .card-b {
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .tab {
+        border: 1px solid var(--border);
+        background: rgba(0, 0, 0, 0.1);
+        color: var(--tg-text);
+        padding: 8px 10px;
+        border-radius: 12px;
+        font-size: 12px;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .tab.active {
+        border-color: color-mix(in srgb, var(--tg-link) 55%, var(--border));
+        background: color-mix(in srgb, var(--tg-link) 18%, rgba(0, 0, 0, 0.12));
+      }
+
+      .panel {
+        display: grid;
+        gap: 10px;
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--tg-hint);
+      }
+
+      input,
+      select,
+      textarea,
+      button {
+        font-family: inherit;
+        font-size: 13px;
+      }
+
+      input,
+      select,
+      textarea {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 10px 10px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: rgba(0, 0, 0, 0.14);
+        color: var(--tg-text);
+        outline: none;
+      }
+
+      textarea {
+        min-height: 96px;
+        resize: vertical;
+        font-family: var(--mono);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .row {
+        display: grid;
+        gap: 10px;
+      }
+
+      @media (min-width: 920px) {
+        .row.cols2 {
+          grid-template-columns: 1fr 1fr;
+        }
+        .row.cols3 {
+          grid-template-columns: 1fr 1fr 1fr;
+        }
+      }
+
+      .btns {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      button {
+        border: 1px solid var(--border);
+        background: rgba(0, 0, 0, 0.14);
+        color: var(--tg-text);
+        padding: 10px 12px;
+        border-radius: 12px;
+        cursor: pointer;
+      }
+
+      button.primary {
+        border-color: color-mix(in srgb, var(--tg-button) 65%, var(--border));
+        background: color-mix(in srgb, var(--tg-button) 22%, rgba(0, 0, 0, 0.12));
+        color: var(--tg-button-text);
+      }
+
+      button.danger {
+        border-color: color-mix(in srgb, var(--danger) 65%, var(--border));
+        background: color-mix(in srgb, var(--danger) 18%, rgba(0, 0, 0, 0.12));
+      }
+
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .sep {
+        height: 1px;
+        background: var(--border);
+        margin: 4px 0;
+      }
+
+      .hint {
+        font-size: 12px;
+        line-height: 1.5;
+        color: var(--tg-hint);
+      }
+
+      .out {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 10px;
+        background: rgba(0, 0, 0, 0.12);
+      }
+
+      .out pre {
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: var(--mono);
+        font-size: 12px;
+        line-height: 1.5;
+        color: var(--tg-text);
+      }
+
+      .ok {
+        color: var(--ok);
+        font-weight: 900;
+      }
+
+      .bad {
+        color: var(--danger);
+        font-weight: 900;
+      }
+
+      code.k {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--tg-text);
+      }
+
+      .kv {
+        display: grid;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--tg-hint);
+      }
+
+      .kv code {
+        font-family: var(--mono);
+        color: var(--tg-text);
+        font-size: 11px;
+        word-break: break-all;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="wrap">
+      <div class="header">
+        <div class</body>="title">
+          <h1>AI Crypto Trading Bot — Telegram Mini App</h1>
+          <div class="sub">
+            Mini App отправляет <code class="k">initData</code> в заголовке
+            <code class="k">X-Telegram-Init</h1>-Data</code>. Защищённые эндпоинты привязаны к
+            <code class="k">chat_id</code> (multi-user).
+          </div>
+        </div>
+
+        <div class="status">
+          <div class="pill">
+            <span>API:</span>
+            <strong id="apiStatus">…</strong>
+          </div>
+          <div class="pill">
+            <span>Session:</span>
+            <strong id="sessionStatus">…</strong>
+          </div>
+          <div class="pill">
+            <</span></span>span>chat_id:</span>
+            <strong id="chatIdView">…</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <div class="card-h">
+            <h2>П</h2>анель</h2>
+            <p>Сигналы, подписки, профили стратегий, paper-портфель и рынок.</p>
+          </div>
+
+          <div class="card-b">
+            <div class="tabs" id="tabs">
+              <div class="tab</p> active" data-tab="signals">Сигналы</div>
+              <div class="tab" data-tab="subs">Подписки</div>
+              <div class="tab" data-tab="profile">Профиль</div>
+              <div class="tab" data-tab="paper">Paper</div>
+              <div class="tab" data-tab="markets">Маркет</div>
+              <div class="tab" data-tab="debug">Debug</div>
+            </div>
+
+            <!-- Signals -->
+            <div class="panel" id="panel-signals">
+              <div class="row cols3">
+                <label>
+                  Timeframe
+                  <select id="timeframe">
+                    <option value="1m">1m</option>
+                    <option value="3m">3m</option>
+                    <option value="5m" selected></label></option>5m</option>
+                    <option value="15m">15m</option>
+                    <option value="1h">1h</option>
+                    <option value="4h">4h</option>
+                    <option value="1d">1d</option>
+                  </select>
+                </label>
+
+                <label>
+                  Model
+                  <select id="modelType">
+                    <option value="auto" selected>auto</option>
+                    <option value="logistic_regression">logistic_regression</option>
+                    <option value="random_forest">random_f</label></option>orest</option>
+                    <option value="gradient_boosting">gradient_boosting</option>
+                    <option value="lstm">lstm</option>
+                  </select>
+                </label>
+
+                <label>
+                  Actionable only
+                  <select id="actionableOnly"></label>
+                    <option value="true" selected>true</option>
+                    <option value="false">false</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="btns">
+                <button class="primary" id="btnSummary">Summary по моим подпискам</button>
+                <button id="btnMySymbols">Мои символы</button>
+                <button id="btnMe">Проверить сессию (/me)</button>
+              </div>
+
+              <div class="hint">
+                Защищённые запросы работают только если Mini App открыт из Telegram (или ты вручную указал
+                <code class="k">initData</code> в Debug).
+              </div>
+            </div>
+
+            <!-- Subscriptions -->
+            <div class="panel" id="panel-subs" style="display: none">
+              <div class="row cols2">
+                <label>
+                  Symbol
+                  <input id="subSymbol" placeholder="BTC/USDT или BTC" />
+                </label>
+
+                <label>
+                  Warmup (свечи + индикаторы)
+                  <select id="sub</label></label>Warmup">
+                    <option value="true" selected>true</option>
+                    <option value="false">false</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="btns">
+                <button class="primary" id="btnSubscribe">Подписаться</button>
+                <button class="danger" id="btnUnsubscribe">Отписаться</button>
+                <button id="btnListSubs">Показать подписки</button>
+              </div>
+
+              <div class="sep"></div>
+
+              <div class="btns">
+                <button id="btnSubBTC">+ BTC/USDT</button>
+                <button id="btnSubETH">+ ETH/USDT</button>
+                <button id="btnSubSOL">+ SOL/USDT</button>
+              </div>
+
+              <div class="hint">
+                Эндпоинты: <code class="k">/miniapp/api/subscriptions/subscribe</code>,
+                <code class="k">/miniapp/api/subscriptions/unsubscribe</code>,
+                <code class="k">/miniapp/api/subscriptions/my-symbols</code>.
+              </div>
+            </div>
+
+            <!-- Profile -->
+            <div class="panel" id="panel-profile" style="display: none">
+              <div class="row cols2">
+                <label>
+                  Symbol
+                  <input id="profileSymbol" value="BTC/</label>USDT" />
+                </label>
+
+                <label>
+                  model_type
+                  <select id="profileModelType">
+                    <option value="auto">auto</option>
+                    <option value="logistic_regression">logistic_regression</option>
+                    <option value="random_f</label>orest" selected>random_forest</option>
+                    <option value="gradient_boosting">gradient_boosting</option>
+                    <option value="lstm">lstm</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="btns"></option>
+                <button id="btnGetProfile">Получить профиль</button>
+                <button class="primary" id="btnUpdateProfile">Сохранить профиль</button>
+              </div>
+
+              <div class="sep"></div>
+
+              <div class="row cols3">
+                <label></label>
+                  buy_threshold
+                  <input id="profileBuy" type="number" step="0.01" min="0" max="1" value="0.6" />
+                </label>
+
+                <label>
+                  sell_threshold
+                  <input id="profileSell" type="number</label>" step="0.01" min="0" max="1" value="0.4" />
+                </label>
+
+                <label>
+                  cooldown_ms
+                  <input id="profileCooldown" type="number" step="1000" min="0" value="0" /></label>
+                </label>
+              </div>
+
+              <div class="row cols3">
+                <label>
+                  target_threshold
+                  <input id="profileTarget" type="number" step="0.0001" min="0" value="0.002" />
+                </label>
+
+                <</label>label>
+                  stop_loss_pct
+                  <input id="profileStopLoss" type="number" step="0.001" min="0" max="1" value="0.02" />
+                </label>
+
+                <label>
+                  take_profit_pct
+                  <input id="profileTake</label>Profit" type="number" step="0.001" min="0" max="1" value="0.04" />
+                </label>
+              </div>
+
+              <div class="row cols3">
+                <label>
+                  use_trend_filter
+                  <select id="profile</label>Trend">
+                    <option value="true" selected>true</option>
+                    <option value="false">false</option>
+                  </select>
+                </label>
+
+                <label>
+                  use_rsi_filter
+                  <select id="profileRsi">
+                    <option value="true" selected</label>>true</option>
+                    <option value="false">false</option>
+                  </select>
+                </label>
+
+                <label>
+                  max_position_fraction
+                  <input id="profileMaxPosFrac" type="number" step="0.01" min="0" max="1"</label> value="0.3" />
+                </label>
+              </div>
+
+              <div class="row cols2">
+                <label>
+                  min_trade_usdt
+                  <input id="profileMinTrade" type="number" step="0.1" min="0" value="10"</label> />
+                </label>
+
+                <label>
+                  min_position_usdt
+                  <input id="profileMinPos" type="number" step="0.1" min="0" value="5" />
+                </label>
+              </div>
+
+              <div class="hint">
+                Э</label>ндпоинты: <code class="k">/miniapp/api/strategy/profile</code> (GET/POST). Профиль
+                хранится per-chat.
+              </div>
+            </div>
+
+            <!-- Paper -->
+            <div class="panel" id="panel-paper" style="display: none">
+              <div class="row cols2">
+                <label>
+                  Symbol
+                  <input id="paperSymbol" value="BTC/USDT" />
+                </label>
+
+                <label>
+                  Trades limit
+                  <input id="paperTradesLimit" type="</label></label>number" min="1" max="100" value="20" />
+                </label>
+              </div>
+
+              <div class="btns">
+                <button class="primary" id="btnPortfolio">Портфель</button>
+                <button id="btnTrades">Сделки</button>
+              </div>
+
+              <div class="hint">
+                Эндпоинты: <code class="k">/miniapp/api/paper-trading/portfolio</code> и
+                <code class="k">/miniapp/api/paper-trading/trades</code>.
+              </div>
+            </div>
+
+            <!-- Markets -->
+            <div class="panel" id="panel-markets" style="display: none">
+              <div class="row cols2">
+                <label>
+                  Search query
+                  <input id="marketQuery" placeholder="BTC</label> / AAVE / DOGE" />
+                </label>
+
+                <label>
+                  Limit
+                  <input id="marketLimit" type="number" min="1" max="100" value="20" />
+                </label>
+              </div>
+
+              <div class="btns"></label>
+                <button class="primary" id="btnSearchSymbols">Найти</button>
+                <button id="btnAvailableSymbols">Доступные (USDT)</button>
+              </div>
+
+              <div class="hint">Публичные эндпоинты рынка, auth не требуется.</div>
+            </div>
+
+            <!-- Debug -->
+            <div class="panel" id="panel-debug" style="display: none">
+              <div class="row cols2">
+                <label>
+                  API Base URL (пусто = текущий origin)
+                  <input id="apiBase</label>" placeholder="https://your-domain.com" />
+                </label>
+
+                <label>
+                  initData override (если открыто не внутри Telegram)
+                  <input id="initDataOverride" placeholder="вставь Telegram.WebApp.initData" />
+                </label>
+              </div></label>
+
+              <div class="btns">
+                <button id="btnPing">Ping API (/)</button>
+                <button id="btnShowInit">Показать initDataUnsafe</button>
+                <button id="btnClearOutput">Очистить вывод</button>
+              </div>
+
+              <label>
+                initData preview (short)
+                <textarea id="initDataPreview" readonly></textarea>
+              </label>
+
+              <div class="kv">
+                <div>
+                  Tip: <code>initData</code> должен приходить автоматически при открытии из Telegram.</label></div></code>
+                  Не публикуй и не пересылай полный <code>initData</code>.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h">
+            <h2>Вывод</h</code></h2>2>
+            <p>Ответы API и диагностическая информация (как “консоль”).</p>
+          </div>
+
+          <div class="card-b">
+            <div class="btns">
+              <button id="btnCopyOutput">Copy JSON</button>
+              <button</p> id="btnClearOutput2">Clear</button>
+            </div>
+
+            <div class="out">
+              <pre id="output">(готово)</pre>
+            </div>
+
+            <div class="hint">
+              Если видишь <code class="k">HTTP 401</code> — открой Mini App внутри Telegram или укажи
+              initData override в Debug.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        const tg =
+          window.Telegram && window.Telegram</script>.WebApp ? window.Telegram.WebApp : null;
+
+        const el = (id) => document.getElementById(id);
+
+        const output = el("output");
+        const apiStatus = el("apiStatus");
+        const sessionStatus = el("sessionStatus");
+        const chatIdView = el("chatIdView");
+
+        const apiBaseInput = el("apiBase");
+        const initDataOverrideInput = el("initDataOverride");
+        const initDataPreview = el("initDataPreview");
+
+        function setThemeVarsFromTelegram() {
+          if (!tg || !tg.themeParams) return;
+          const t = tg.themeParams;
+
+          const set = (name, value) => {
+            if (value) document.documentElement.style.setProperty(name, value);
+          };
+
+          // Telegram theme params: https://core.telegram.org/bots/webapps#themeparams
+          set("--tg-bg", t.bg_color);
+          set("--tg-text", t.text_color);
+          set("--tg-hint", t.hint_color);
+          set("--tg-link", t.link_color);
+          set("--tg-button", t.button_color);
+          set("--tg-button-text", t.button_text_color);
+          set("--tg-secondary-bg", t.secondary_bg_color);
+        }
+
+        function setOut(v) {
+          output.textContent =
+            typeof v === "string" ? v : JSON.stringify(v, null, 2);
+        }
+
+        function appendOut(v) {
+          const s = typeof v === "string" ? v : JSON.stringify(v, null, 2);
+          output.textContent =
+            output.textContent === "(готово)"
+              ? s
+              : output.textContent + "\n\n" + s;
+        }
+
+        function setApiStatusOk(ok) {
+          apiStatus.innerHTML = ok
+            ? '<span class="ok">ok</span>'
+            : '<span class="bad">error</span>';
+        }
+
+        function setSessionStatus(ok, extra) {
+          sessionStatus.innerHTML = ok
+            ? '<span class="ok">ok</span>'
+            : '<span class="bad">error</span>';
+
+          if (extra && typeof extra.chat_id !== "undefined") {
+            chatIdView.textContent =
+              extra.chat_id !== null ? String(extra.chat_id) : "n/a";
+          }
+        }
+
+        function showAlert(msg) {
+          if (tg && typeof tg.showAlert === "function") {
+            try {
+              tg.showAlert(String(msg));
+              return;
+            } catch (_) {}
+          }
+          console.log(msg);
+        }
+
+        function getApiBase() {
+          const v = (apiBaseInput.value || "").trim();
+          return v ? v.replace(/\/+$/, "") : window.location.origin;
+        }
+
+        function getInitData() {
+          const override = (initDataOverrideInput.value || "").trim();
+          if (override) return override;
+          if (tg && typeof tg.initData === "string" && tg.initData.trim()) {
+            return tg.initData.trim();
+          }
+          return "";
+        }
+
+        function updateInitDataPreview() {
+          const initData = getInitData();
+          if (!initData) {
+            initDataPreview.value =
+              "(empty) — открой Mini App внутри Telegram или вставь initData override";
+            return;
+          }
+          const head = initData.slice(0, 240);
+          initDataPreview.value =
+            head + (initData.length > 240 ? "\n…(truncated)…" : "");
+        }
+
+        function requireInitData() {
+          const initData = getInitData();
+          if (!initData) {
+            setSessionStatus(false, { chat_id: null });
+            throw new Error(
+              "Нет initData. Открой Mini App внутри Telegram или вставь initData override (Debug)."
+            );
+          }
+          return initData;
+        }
+
+        function normalizeSymbol(raw) {
+          let v = (raw || "").trim().toUpperCase();
+          v = v.replace(/\s+/g, "");
+          if (!v) throw new Error("Пустой symbol");
+
+          // Accept BTC/USDT already
+          if (v.includes("/")) return v;
+
+          // Convert BTCUSDT -> BTC/USDT if endsWith USDT
+          if (v.endsWith("USDT") && v.length > 4) return v.slice(0, -4) + "/USDT";
+
+          // Default quote
+          return v + "/USDT";
+        }
+
+        function toQS(params) {
+          const sp = new URLSearchParams();
+          Object.entries(params || {}).forEach(([k, v]) => {
+            if (v === undefined || v === null) return;
+            sp.set(k, String(v));
+          });
+          return sp.toString();
+        }
+
+        async function apiRequest(method, path, params, { auth } = { auth: false }) {
+          const base = getApiBase();
+          const qs = toQS(params);
+          const url = qs ? base + path + "?" + qs : base + path;
+
+          const headers = {};
+          if (auth) {
+            headers["X-Telegram-Init-Data"] = requireInitData();
+          } else {
+            const initData = getInitData();
+            if (initData) headers["X-Telegram-Init-Data"] = initData;
+          }
+
+          // Backend endpoints are FastAPI Query(...) even for POST -> send data via query string
+          const res = await fetch(url, { method, headers });
+          const text = await res.text();
+
+          let data = null;
+          try {
+            data = text ? JSON.parse(text) : null;
+          } catch (_) {
+            data = { raw: text };
+          }
+
+          if (!res.ok) {
+            const err = new Error("HTTP " + res.status);
+            err.status = res.status;
+            err.data = data;
+            throw err;
+          }
+          return data;
+        }
+
+        const apiGet = (path, params, opts) =>
+          apiRequest("GET", path, params, opts);
+        const apiPost = (path, params, opts) =>
+          apiRequest("POST", path, params, opts);
+
+        async function pingApi() {
+          try {
+            const data = await apiGet("/", {}, { auth: false });
+            setApiStatusOk(true);
+            appendOut({ ping: data });
+          } catch (e) {
+            setApiStatusOk(false);
+            appendOut({
+              error: String(e),
+              status: e.status || null,
+              detail: e.data || null,
+            });
+          }
+        }
+
+        async function loadMe() {
+          const me = await apiGet("/miniapp/api/me", {}, { auth: true });
+          setSessionStatus(true, me);
+          return me;
+        }
+
+        async function actionSummary() {
+          await loadMe();
+          const timeframe = el("timeframe").value;
+          const model_type = el("modelType").value;
+          const actionable_only = el("actionableOnly").value === "true";
+          return apiGet(
+            "/miniapp/api/signals/summary",
+            { timeframe, model_type, actionable_only },
+            { auth: true }
+          );
+        }
+
+        async function actionMySymbols() {
+          await loadMe();
+          return apiGet("/miniapp/api/subscriptions/my-symbols", {}, { auth: true });
+        }
+
+        async function actionSubscribe(symbol) {
+          await loadMe();
+          const s = normalizeSymbol(symbol);
+          const warmup = el("subWarmup").value === "true";
+          const timeframe = el("timeframe").value;
+          return apiPost(
+            "/miniapp/api/subscriptions/subscribe",
+            { symbol: s, warmup, timeframe },
+            { auth: true }
+          );
+        }
+
+        async function actionUnsubscribe(symbol) {
+          await loadMe();
+          const s = normalizeSymbol(symbol);
+          return apiPost(
+            "/miniapp/api/subscriptions/unsubscribe",
+            { symbol: s },
+            { auth: true }
+          );
+        }
+
+        async function actionGetProfile() {
+          await loadMe();
+          const symbol = normalizeSymbol(el("profileSymbol").value);
+          const data = await apiGet(
+            "/miniapp/api/strategy/profile",
+            { symbol },
+            { auth: true }
+          );
+
+          // Best-effort fill UI
+          try {
+            const p = data && data.profile ? data.profile : null;
+            if (p) {
+              if (p.model_type) el("profileModelType").value = String(p.model_type);
+              if (typeof p.buy_threshold !== "undefined")
+                el("profileBuy").value = String(p.buy_threshold);
+              if (typeof p.sell_threshold !== "undefined")
+                el("profileSell").value = String(p.sell_threshold);
+              if (typeof p.cooldown_ms !== "undefined")
+                el("profileCooldown").value = String(p.cooldown_ms);
+              if (typeof p.target_threshold !== "undefined")
+                el("profileTarget").value = String(p.target_threshold);
+              if (typeof p.stop_loss_pct !== "undefined")
+                el("profileStopLoss").value = String(p.stop_loss_pct);
+              if (typeof p.take_profit_pct !== "undefined")
+                el("profileTakeProfit").value = String(p.take_profit_pct);
+              if (typeof p.use_trend_filter !== "undefined")
+                el("profileTrend").value = String(Boolean(p.use_trend_filter));
+              if (typeof p.use_rsi_filter !== "undefined")
+                el("profileRsi").value = String(Boolean(p.use_rsi_filter));
+              if (typeof p.min_trade_usdt !== "undefined")
+                el("profileMinTrade").value = String(p.min_trade_usdt);
+              if (typeof p.min_position_usdt !== "undefined")
+                el("profileMinPos").value = String(p.min_position_usdt);
+              if (typeof p.max_position_fraction !== "undefined")
+                el("profileMaxPosFrac").value = String(p.max_position_fraction);
+            }
+          } catch (_) {}
+
+          return data;
+        }
+
+        async function actionUpdateProfile() {
+          await loadMe();
+
+          const symbol = normalizeSymbol(el("profileSymbol").value);
+          const model_type = el("profileModelType").value;
+
+          const buy_threshold = Number(el("profileBuy").value || "0.6");
+          const sell_threshold = Number(el("profileSell").value || "0.4");
+          const cooldown_ms = Number(el("profileCooldown").value || "0");
+          const target_threshold = Number(el("profileTarget").value || "0.002");
+          const stop_loss_pct = Number(el("profileStopLoss").value || "0.02");
+          const take_profit_pct = Number(el("profileTakeProfit").value || "0.04");
+          const use_trend_filter = el("profileTrend").value === "true";
+          const use_rsi_filter = el("profileRsi").value === "true";
+          const min_trade_usdt = Number(el("profileMinTrade").value || "10");
+          const min_position_usdt = Number(el("profileMinPos").value || "5");
+          const max_position_fraction = Number(el("profileMaxPosFrac").value || "0.3");
+
+          return apiPost(
+            "/miniapp/api/strategy/profile",
+            {
+              symbol,
+              model_type,
+              buy_threshold,
+              sell_threshold,
+              use_trend_filter,
+              use_rsi_filter,
+              target_threshold,
+              cooldown_ms,
+              stop_loss_pct,
+              take_profit_pct,
+              min_trade_usdt,
+              min_position_usdt,
+              max_position_fraction,
+            },
+            { auth: true }
+          );
+        }
+
+        async function actionPortfolio() {
+          await loadMe();
+          const symbol = normalizeSymbol(el("paperSymbol").value);
+          return apiGet(
+            "/miniapp/api/paper-trading/portfolio",
+            { symbol },
+            { auth: true }
+          );
+        }
+
+        async function actionTrades() {
+          await loadMe();
+          const symbol = normalizeSymbol(el("paperSymbol").value);
+          const limit = Number(el("paperTradesLimit").value || "20");
+          return apiGet(
+            "/miniapp/api/paper-trading/trades",
+            { symbol, limit },
+            { auth: true }
+          );
+        }
+
+        async function actionSearchSymbols() {
+          const query = (el("marketQuery").value || "").trim();
+          if (!query) throw new Error("Укажи query для поиска");
+          const limit = Number(el("marketLimit").value || "20");
+          return apiGet(
+            "/markets/search-symbols",
+            {
+              query,
+              quote: "USDT",
+              only_active: true,
+              spot_only: true,
+              limit,
+            },
+            { auth: false }
+          );
+        }
+
+        async function actionAvailableSymbols() {
+          return apiGet(
+            "/markets/available-symbols",
+            { quote: "USDT", only_active: true, spot_only: true, limit: 50 },
+            { auth: false }
+          );
+        }
+
+        function tabsInit() {
+          const tabs = el("tabs");
+          const panels = {
+            signals: el("panel-signals"),
+            subs: el("panel-subs"),
+            profile: el("panel-profile"),
+            paper: el("panel-paper"),
+            markets: el("panel-markets"),
+            debug: el("panel-debug"),
+          };
+
+          tabs.addEventListener("click", (e) => {
+            const t = e.target.closest(".tab");
+            if (!t) return;
+            const name = t.getAttribute("data-tab");
+            if (!name || !panels[name]) return;
+
+            [...tabs.querySelectorAll(".tab")].forEach((x) =>
+              x.classList.remove("active")
+            );
+            t.classList.add("active");
+
+            Object.entries(panels).forEach(([k, p]) => {
+              p.style.display = k === name ? "" : "none";
+            });
+          });
+        }
+
+        function wireButtons() {
+          const bind = (id, fn) => {
+            el(id).addEventListener("click", async () => {
+              try {
+                setOut("…");
+                const data = await fn();
+                setOut(data);
+              } catch (e) {
+                const payload = {
+                  error: String(e),
+                  status: e.status || null,
+                  detail: e.data || null,
+                };
+                setOut(payload);
+                showAlert(String(e));
+              }
+            });
+          };
+
+          bind("btnPing", pingApi);
+          bind("btnMe", loadMe);
+
+          bind("btnSummary", actionSummary);
+          bind("btnMySymbols", actionMySymbols);
+
+          bind("btnListSubs", actionMySymbols);
+          bind("btnSubscribe", async () => actionSubscribe(el("subSymbol").value));
+          bind("btnUnsubscribe", async () => actionUnsubscribe(el("subSymbol").value));
+
+          bind("btnSubBTC", async () => actionSubscribe("BTC/USDT"));
+          bind("btnSubETH", async () => actionSubscribe("ETH/USDT"));
+          bind("btnSubSOL", async () => actionSubscribe("SOL/USDT"));
+
+          bind("btnGetProfile", actionGetProfile);
+          bind("btnUpdateProfile", actionUpdateProfile);
+
+          bind("btnPortfolio", actionPortfolio);
+          bind("btnTrades", actionTrades);
+
+          bind("btnSearchSymbols", actionSearchSymbols);
+          bind("btnAvailableSymbols", actionAvailableSymbols);
+
+          el("btnClearOutput").addEventListener("click", () => setOut("(готово)"));
+          el("btnClearOutput2").addEventListener("click", () => setOut("(готово)"));
+
+          el("btnCopyOutput").addEventListener("click", async () => {
+            try {
+              await navigator.clipboard.writeText(output.textContent || "");
+              showAlert("Copied");
+            } catch (_) {
+              showAlert("Copy failed");
+            }
+          });
+
+          el("btnShowInit").addEventListener("click", () => {
+            if (!tg) {
+              setOut("Telegram.WebApp недоступен (открыто не внутри Telegram).");
+              return;
+            }
+            const full = tg.initData || "";
+            setOut({
+              initData: full.slice(0, 240) + (full.length > 240 ? "…(truncated)…" : ""),
+              initDataUnsafe: tg.initDataUnsafe || {},
+              platform: tg.platform,
+              version: tg.version,
+              colorScheme: tg.colorScheme,
+              themeParams: tg.themeParams || {},
+            });
+          });
+
+          apiBaseInput.addEventListener("input", updateInitDataPreview);
+          initDataOverrideInput.addEventListener("input", () => {
+            updateInitDataPreview();
+            sessionStatus.innerHTML = "…";
+            chatIdView.textContent = "…";
+          });
+        }
+
+        async function bootstrap() {
+          tabsInit();
+
+          if (tg) {
+            tg.ready();
+            try {
+              tg.expand();
+            } catch (_) {}
+            setThemeVarsFromTelegram();
+            tg.onEvent("themeChanged", () => setThemeVarsFromTelegram());
+          }
+
+          setOut("(готово)");
+          apiStatus.innerHTML = "…";
+          sessionStatus.innerHTML = "…";
+          chatIdView.textContent = "…";
+
+          updateInitDataPreview();
+          wireButtons();
+          await pingApi();
+
+          // Best-effort session validation on load
+          try {
+            const initData = getInitData();
+            if (initData) {
+              const me = await loadMe();
+              appendOut({ me });
+            } else {
+              setSessionStatus(false, { chat_id: null });
+            }
+          } catch (e) {
+            setSessionStatus(false, { chat_id: null });
+            appendOut({ session_error: String(e), detail: e.data || null });
+          }
+        }
+
+        bootstrap();
+      })();
+    </script>
+  </body>
+</html>

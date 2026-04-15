@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.core.model_profiles import get_model_profile
 from app.db.models import Signal
 from app.services.lstm_model_service import LSTMModelService
 from app.services.ml_model_service import MLModelService
@@ -80,6 +79,7 @@ class StrategyService:
         rsi_overbought: float = 70.0,
         rsi_oversold: float = 30.0,
         model_type: str = "logistic_regression",
+        chat_id: int | None = None,
     ) -> dict[str, object]:
         resolved = self.resolve_model_config(
             symbol=symbol,
@@ -90,6 +90,7 @@ class StrategyService:
             cooldown_ms=cooldown_ms,
             use_trend_filter=use_trend_filter,
             use_rsi_filter=use_rsi_filter,
+            chat_id=chat_id,
         )
 
         model_type = str(resolved["model_type"])
@@ -258,6 +259,7 @@ class StrategyService:
         rsi_oversold: float = 30.0,
         model_type: str = "logistic_regression",
         target_threshold: float = 0.002,
+        chat_id: int | None = None,
     ) -> dict[str, object]:
         signal_data = self.generate_signal(
             symbol=symbol,
@@ -273,6 +275,7 @@ class StrategyService:
             rsi_oversold=rsi_oversold,
             model_type=model_type,
             target_threshold=target_threshold,
+            chat_id=chat_id,
         )
 
         saved_signal = self.save_signal(signal_data)
@@ -326,6 +329,7 @@ class StrategyService:
         rsi_overbought: float = 70.0,
         rsi_oversold: float = 30.0,
         model_type: str = "logistic_regression",
+        chat_id: int | None = None,
     ) -> dict[str, object]:
         results = []
 
@@ -349,6 +353,7 @@ class StrategyService:
                     rsi_oversold=rsi_oversold,
                     model_type=model_type,
                     target_threshold=target_threshold,
+                    chat_id=chat_id,
                 )
 
                 signal = result["signal"]
@@ -361,13 +366,13 @@ class StrategyService:
 
                 results.append(result)
 
-            except Exception as e:
+            except Exception as exc:
                 results.append(
                     {
                         "status": "error",
                         "symbol": symbol,
                         "timeframe": timeframe,
-                        "error": str(e),
+                        "error": str(exc),
                     }
                 )
 
@@ -396,6 +401,7 @@ class StrategyService:
         rsi_overbought: float = 70.0,
         rsi_oversold: float = 30.0,
         model_type: str = "logistic_regression",
+        chat_id: int | None = None,
     ) -> dict[str, object]:
         results = []
 
@@ -420,6 +426,7 @@ class StrategyService:
                     rsi_oversold=rsi_oversold,
                     model_type=model_type,
                     target_threshold=target_threshold,
+                    chat_id=chat_id,
                 )
 
                 generated_signal = result["generated_signal"]
@@ -438,13 +445,13 @@ class StrategyService:
 
                 results.append(result)
 
-            except Exception as e:
+            except Exception as exc:
                 results.append(
                     {
                         "status": "error",
                         "symbol": symbol,
                         "timeframe": timeframe,
-                        "error": str(e),
+                        "error": str(exc),
                     }
                 )
 

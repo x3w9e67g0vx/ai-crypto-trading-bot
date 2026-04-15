@@ -5,3 +5,7 @@ __pycache__/
 .vscode/
 .idea/
 *.log
+
+# Local runner artifacts
+.run/
+run_logs/

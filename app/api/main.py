@@ -1,18 +1,18 @@
 import asyncio
 from statistics import mode
 
-from fastapi import Depends, FastAPI, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.model_profiles import get_model_profile, set_model_profile
-from app.db import models
 from app.db.base import Base
 from app.db.dependencies import get_db
+from app.db.models import TelegramSubscription
 from app.db.session import engine
+from app.miniapp.dependencies import miniapp_auth
 from app.services.backtest_service import BacktestService
 from app.services.indicator_service import IndicatorService
 from app.services.ingestion_service import IngestionService
@@ -32,6 +32,333 @@ app = FastAPI(title="AI Crypto Trading Bot")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
+def _raise_http_error(
+    *,
+    stage: str,
+    status_code: int = 500,
+    exc: Exception | None = None,
+    **extra: object,
+) -> None:
+    payload: dict[str, object] = {
+        "status": "error",
+        "stage": stage,
+        **extra,
+    }
+
+    if exc is not None:
+        payload["error_type"] = type(exc).__name__
+        payload["error"] = str(exc)
+
+    raise HTTPException(status_code=status_code, detail=payload)
+
+
+def _run_telegram_send_batch(
+    telegram_service: TelegramService,
+    send_queue: list[tuple[int, str]],
+) -> None:
+    async def _runner() -> None:
+        try:
+            for chat_id, text in send_queue:
+                await telegram_service.send_message(chat_id=chat_id, text=text)
+        finally:
+            close_service = getattr(telegram_service, "close", None)
+            if callable(close_service):
+                await close_service()
+            else:
+                bot_session = getattr(
+                    getattr(telegram_service, "bot", None), "session", None
+                )
+                close_fn = getattr(bot_session, "close", None)
+                if callable(close_fn):
+                    await close_fn()
+
+    asyncio.run(_runner())
+
+
+def _normalize_symbol_input(raw: str) -> str:
+    value = (raw or "").strip().upper()
+    value = value.replace(" ", "")
+
+    if not value:
+        raise ValueError("Empty symbol")
+
+    if "/" in value:
+        return value
+
+    if value.endswith("USDT") and len(value) > 4:
+        base = value[:-4]
+        return f"{base}/USDT"
+
+    return f"{value}/USDT"
+
+
+def _warmup_symbol_data(
+    *,
+    db: Session,
+    symbol: str,
+    timeframe: str,
+    limit: int | None = None,
+) -> dict[str, object]:
+    """
+    Ensure a newly subscribed symbol becomes usable immediately:
+    - fetch latest candles into DB
+    - calculate + save indicators
+    """
+    ingest_service = IngestionService(db)
+    indicator_service = IndicatorService(db)
+
+    safe_limit = int(limit) if limit is not None else int(settings.OHLCV_LIMIT)
+
+    ingest_result = ingest_service.update_ohlcv(
+        symbol=symbol,
+        timeframe=timeframe,
+        limit=safe_limit,
+    )
+    indicators_result = indicator_service.calculate_and_save(
+        symbol=symbol,
+        timeframe=timeframe,
+    )
+
+    return {
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "limit": safe_limit,
+        "ingest": ingest_result,
+        "indicators": indicators_result,
+    }
+
+
+@app.get("/miniapp", include_in_schema=False)
+@app.get("/miniapp/", include_in_schema=False)
+async def miniapp():
+    return FileResponse("static/miniapp/index.html")
+
+
+# -----------------------------
+# Telegram Mini App secured API
+# (chat_id is derived from initData; never trust client-provided chat_id)
+# -----------------------------
+@app.get("/miniapp/api/me")
+def miniapp_api_me(auth: dict = Depends(miniapp_auth)) -> dict[str, object]:
+    parsed = auth.get("parsed") or {}
+    return {
+        "status": "ok",
+        "user_id": auth.get("user_id"),
+        "chat_id": auth.get("chat_id"),
+        "user": parsed.get("user"),
+        "chat": parsed.get("chat"),
+        "receiver": parsed.get("receiver"),
+    }
+
+
+@app.get("/miniapp/api/subscriptions/my-symbols")
+def miniapp_my_symbols(
+    auth: dict = Depends(miniapp_auth),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    chat_id = int(auth["chat_id"])
+    service = SubscriptionService(db)
+    return service.get_all_for_chat(chat_id=chat_id)
+
+
+@app.post("/miniapp/api/subscriptions/subscribe")
+def miniapp_subscribe_symbol(
+    symbol: str = Query(..., min_length=1),
+    timeframe: str = Query(default=settings.DEFAULT_TIMEFRAME),
+    warmup: bool = Query(
+        default=True,
+        description="If true, prefetch candles + indicators for this symbol",
+    ),
+    auth: dict = Depends(miniapp_auth),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    chat_id = int(auth["chat_id"])
+    normalized = _normalize_symbol_input(symbol)
+
+    service = SubscriptionService(db)
+    result = service.subscribe(chat_id=chat_id, symbol=normalized)
+
+    if not warmup:
+        return result
+
+    if str(result.get("message", "")).lower() != "subscribed":
+        return result
+
+    try:
+        warmup_result = _warmup_symbol_data(
+            db=db,
+            symbol=normalized,
+            timeframe=timeframe,
+            limit=settings.OHLCV_LIMIT,
+        )
+        return {
+            **result,
+            "warmup": {
+                "status": "ok",
+                **warmup_result,
+            },
+        }
+    except Exception as exc:
+        return {
+            **result,
+            "warmup": {
+                "status": "error",
+                "symbol": normalized,
+                "timeframe": timeframe,
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            },
+        }
+
+
+@app.post("/miniapp/api/subscriptions/unsubscribe")
+def miniapp_unsubscribe_symbol(
+    symbol: str = Query(..., min_length=1),
+    auth: dict = Depends(miniapp_auth),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    chat_id = int(auth["chat_id"])
+    normalized = symbol.strip().upper().replace(" ", "")
+    service = SubscriptionService(db)
+    return service.unsubscribe(chat_id=chat_id, symbol=normalized)
+
+
+@app.get("/miniapp/api/signals/summary")
+def miniapp_signals_summary(
+    timeframe: str = Query(default="5m"),
+    model_type: str = Query(default="auto"),
+    actionable_only: bool = Query(default=True),
+    auth: dict = Depends(miniapp_auth),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    chat_id = int(auth["chat_id"])
+
+    sub_service = SubscriptionService(db)
+    symbols = sub_service.get_symbols_for_chat(chat_id)
+    if not symbols:
+        symbols = settings.get_default_symbols()
+
+    notification_service = NotificationService(db)
+    has_results, text = notification_service.format_multi_symbol_signals_summary(
+        symbols=symbols,
+        timeframe=timeframe,
+        model_type=model_type,
+        actionable_only=actionable_only,
+        chat_id=chat_id,
+    )
+
+    return {
+        "status": "ok",
+        "chat_id": chat_id,
+        "symbols": symbols,
+        "timeframe": timeframe,
+        "model_type": model_type,
+        "actionable_only": actionable_only,
+        "has_results": has_results,
+        "text": text,
+    }
+
+
+@app.get("/miniapp/api/strategy/profile")
+def miniapp_get_strategy_profile(
+    symbol: str = Query(..., min_length=1),
+    auth: dict = Depends(miniapp_auth),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    chat_id = int(auth["chat_id"])
+    normalized = symbol.strip().upper().replace(" ", "")
+    service = StrategyProfileService(db)
+    profile = service.get_profile(symbol=normalized, chat_id=chat_id)
+
+    return {
+        "status": "ok",
+        "chat_id": chat_id,
+        "symbol": normalized,
+        "profile": profile,
+    }
+
+
+@app.post("/miniapp/api/strategy/profile")
+def miniapp_update_strategy_profile(
+    symbol: str = Query(..., min_length=1),
+    model_type: str = Query(..., min_length=1),
+    buy_threshold: float = Query(default=0.6, gt=0.0, lt=1.0),
+    sell_threshold: float = Query(default=0.4, gt=0.0, lt=1.0),
+    use_trend_filter: bool = Query(default=True),
+    use_rsi_filter: bool = Query(default=True),
+    target_threshold: float = Query(default=0.002, ge=0.0, lt=1.0),
+    cooldown_ms: int = Query(default=0, ge=0),
+    stop_loss_pct: float = Query(default=0.02, ge=0.0, lt=1.0),
+    take_profit_pct: float = Query(default=0.04, ge=0.0, lt=1.0),
+    min_trade_usdt: float = Query(default=10.0, ge=0.0),
+    min_position_usdt: float = Query(default=5.0, ge=0.0),
+    max_position_fraction: float = Query(default=0.3, gt=0.0, le=1.0),
+    auth: dict = Depends(miniapp_auth),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    chat_id = int(auth["chat_id"])
+    normalized = symbol.strip().upper().replace(" ", "")
+
+    service = StrategyProfileService(db)
+    profile = service.set_profile(
+        symbol=normalized,
+        profile_data={
+            "model_type": model_type,
+            "buy_threshold": buy_threshold,
+            "sell_threshold": sell_threshold,
+            "use_trend_filter": use_trend_filter,
+            "use_rsi_filter": use_rsi_filter,
+            "target_threshold": target_threshold,
+            "cooldown_ms": cooldown_ms,
+            "stop_loss_pct": stop_loss_pct,
+            "take_profit_pct": take_profit_pct,
+            "min_trade_usdt": min_trade_usdt,
+            "min_position_usdt": min_position_usdt,
+            "max_position_fraction": max_position_fraction,
+        },
+        chat_id=chat_id,
+    )
+
+    return {
+        "status": "ok",
+        "chat_id": chat_id,
+        "symbol": normalized,
+        "profile": profile,
+    }
+
+
+@app.get("/miniapp/api/paper-trading/portfolio")
+def miniapp_get_paper_portfolio(
+    symbol: str = Query(default="BTC/USDT"),
+    auth: dict = Depends(miniapp_auth),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    chat_id = int(auth["chat_id"])
+    normalized = symbol.strip().upper().replace(" ", "")
+    service = PaperTradingService(db)
+    return service.get_portfolio(symbol=normalized, chat_id=chat_id)
+
+
+@app.get("/miniapp/api/paper-trading/trades")
+def miniapp_get_paper_trades(
+    symbol: str | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=100),
+    auth: dict = Depends(miniapp_auth),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    chat_id = int(auth["chat_id"])
+    normalized = symbol.strip().upper().replace(" ", "") if symbol else None
+    service = PaperTradingService(db)
+    trades = service.get_recent_trades(symbol=normalized, chat_id=chat_id, limit=limit)
+
+    return {
+        "status": "ok",
+        "chat_id": chat_id,
+        "count": len(trades),
+        "trades": trades,
+    }
+
+
 @app.get("/favicon.ico")
 async def favicon():
     return FileResponse("static/favicon.ico")
@@ -39,7 +366,32 @@ async def favicon():
 
 @app.on_event("startup")
 def on_startup() -> None:
+    # Create all ORM-managed tables
     Base.metadata.create_all(bind=engine)
+
+    # Lightweight "migration" for chat settings (language, etc.).
+    # This keeps the project runnable without Alembic.
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS telegram_chat_settings (
+                    chat_id BIGINT PRIMARY KEY,
+                    language VARCHAR(8) NOT NULL DEFAULT 'ru',
+                    created_at BIGINT,
+                    updated_at BIGINT
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE INDEX IF NOT EXISTS ix_telegram_chat_settings_language
+                ON telegram_chat_settings (language)
+                """
+            )
+        )
 
 
 @app.get("/")
@@ -164,6 +516,7 @@ def get_latest_signal(
     rsi_overbought: float = Query(default=70.0, gt=0.0, lt=100.0),
     rsi_oversold: float = Query(default=30.0, gt=0.0, lt=100.0),
     model_type: str = Query(default="logistic_regression"),
+    chat_id: int | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     service = StrategyService(db)
@@ -181,6 +534,7 @@ def get_latest_signal(
         rsi_oversold=rsi_oversold,
         model_type=model_type,
         target_threshold=target_threshold,
+        chat_id=chat_id,
     )
 
 
@@ -207,21 +561,31 @@ def get_recent_signals(
 @app.get("/paper-trading/portfolio")
 def get_paper_portfolio(
     symbol: str = Query(default="BTC/USDT"),
+    chat_id: int | None = Query(default=None),
     current_price: float | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     service = PaperTradingService(db)
-    return service.get_portfolio(symbol=symbol, current_price=current_price)
+    return service.get_portfolio(
+        symbol=symbol,
+        chat_id=chat_id,
+        current_price=current_price,
+    )
 
 
 @app.get("/paper-trading/trades")
 def get_paper_trades(
     symbol: str | None = Query(default=None),
+    chat_id: int | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     service = PaperTradingService(db)
-    trades = service.get_recent_trades(symbol=symbol, limit=limit)
+    trades = service.get_recent_trades(
+        symbol=symbol,
+        chat_id=chat_id,
+        limit=limit,
+    )
 
     return {
         "count": len(trades),
@@ -325,6 +689,7 @@ def scan_multiple_signals(
     rsi_overbought: float = Query(default=70.0, gt=0.0, lt=100.0),
     rsi_oversold: float = Query(default=30.0, gt=0.0, lt=100.0),
     model_type: str = Query(default="logistic_regression"),
+    chat_id: int | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     service = StrategyService(db)
@@ -349,6 +714,7 @@ def scan_multiple_signals(
         rsi_overbought=rsi_overbought,
         rsi_oversold=rsi_oversold,
         model_type=model_type,
+        chat_id=chat_id,
     )
 
 
@@ -381,6 +747,24 @@ def get_my_symbols(
 ) -> dict[str, object]:
     service = SubscriptionService(db)
     return service.get_all_for_chat(chat_id=chat_id)
+
+
+@app.get("/subscriptions/all-symbols")
+def get_all_subscribed_symbols(
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    rows = (
+        db.query(TelegramSubscription.symbol)
+        .distinct()
+        .order_by(TelegramSubscription.symbol.asc())
+        .all()
+    )
+    symbols = [str(row[0]) for row in rows]
+
+    return {
+        "count": len(symbols),
+        "symbols": symbols,
+    }
 
 
 @app.get("/markets/available-symbols")
@@ -589,10 +973,11 @@ def run_lstm_backtest(
 @app.get("/strategy/profile")
 def get_strategy_profile(
     symbol: str = Query(...),
+    chat_id: int | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     service = StrategyProfileService(db)
-    profile = service.get_profile(symbol)
+    profile = service.get_profile(symbol=symbol, chat_id=chat_id)
 
     return {
         "status": "ok",
@@ -763,9 +1148,10 @@ def execute_paper_trade(
     rsi_overbought: float = Query(default=70.0, gt=0.0, lt=100.0),
     rsi_oversold: float = Query(default=30.0, gt=0.0, lt=100.0),
     model_type: str = Query(default="logistic_regression"),
+    chat_id: int | None = Query(default=None),
     db: Session = Depends(get_db),
-    stop_loss_ptc: float | None = Query(default=0.02, ge=0.0, lt=1.0),
-    take_profit_ptc: float | None = Query(default=0.04, ge=0.0, lt=1.0),
+    stop_loss_pct: float | None = Query(default=0.02, ge=0.0, lt=1.0),
+    take_profit_pct: float | None = Query(default=0.04, ge=0.0, lt=1.0),
     min_trade_usdt: float = Query(default=10.0, ge=0.0),
     min_position_usdt: float = Query(default=5.0, ge=0.0),
     max_position_fraction: float = Query(default=0.3, gt=0.0, le=1.0),
@@ -788,11 +1174,12 @@ def execute_paper_trade(
         rsi_overbought=rsi_overbought,
         rsi_oversold=rsi_oversold,
         model_type=model_type,
-        stop_loss_ptc=stop_loss_ptc,
-        take_profit_ptc=take_profit_ptc,
+        stop_loss_pct=stop_loss_pct,
+        take_profit_pct=take_profit_pct,
         min_trade_usdt=min_trade_usdt,
         min_position_usdt=min_position_usdt,
         max_position_fraction=max_position_fraction,
+        chat_id=chat_id,
     )
 
 
@@ -807,31 +1194,46 @@ def send_last_signal_to_telegram(
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     if not settings.TELEGRAM_CHAT_ID:
-        return {
-            "status": "error",
-            "message": "TELEGRAM_CHAT_ID is not configured",
-        }
-
-    notification_service = NotificationService(db)
-    text = notification_service.format_last_signal_message(
-        symbol=symbol,
-        timeframe=timeframe,
-        lag_periods=lag_periods,
-        future_steps=future_steps,
-        buy_threshold=buy_threshold,
-        sell_threshold=sell_threshold,
-    )
-
-    telegram_service = TelegramService()
-    asyncio.run(
-        telegram_service.send_message(
-            chat_id=int(settings.TELEGRAM_CHAT_ID),
-            text=text,
+        _raise_http_error(
+            stage="config",
+            status_code=500,
+            message="TELEGRAM_CHAT_ID is not configured",
         )
-    )
+
+    try:
+        notification_service = NotificationService(db)
+        text = notification_service.format_last_signal_message(
+            symbol=symbol,
+            timeframe=timeframe,
+            lag_periods=lag_periods,
+            future_steps=future_steps,
+            buy_threshold=buy_threshold,
+            sell_threshold=sell_threshold,
+        )
+    except Exception as exc:
+        _raise_http_error(stage="format_last_signal_message", exc=exc)
+
+    try:
+        telegram_service = TelegramService()
+    except Exception as exc:
+        _raise_http_error(stage="telegram_service_init", exc=exc)
+
+    try:
+        _run_telegram_send_batch(
+            telegram_service=telegram_service,
+            send_queue=[(int(settings.TELEGRAM_CHAT_ID), text)],
+        )
+    except Exception as exc:
+        _raise_http_error(
+            stage="telegram_send",
+            exc=exc,
+            chat_id=int(settings.TELEGRAM_CHAT_ID),
+        )
 
     return {
         "status": "ok",
+        "sent": True,
+        "chat_id": int(settings.TELEGRAM_CHAT_ID),
         "message": "Last signal sent to Telegram",
     }
 
@@ -843,37 +1245,52 @@ def send_last_signal_if_actionable(
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     if not settings.TELEGRAM_CHAT_ID:
-        return {
-            "status": "error",
-            "message": "TELEGRAM_CHAT_ID is not configured",
-        }
-
-    notification_service = NotificationService(db)
-    should_send, text = (
-        notification_service.get_last_saved_signal_message_if_actionable(
-            symbol=symbol,
-            timeframe=timeframe,
+        _raise_http_error(
+            stage="config",
+            status_code=500,
+            message="TELEGRAM_CHAT_ID is not configured",
         )
-    )
+
+    try:
+        notification_service = NotificationService(db)
+        should_send, text = (
+            notification_service.get_last_saved_signal_message_if_actionable(
+                symbol=symbol,
+                timeframe=timeframe,
+            )
+        )
+    except Exception as exc:
+        _raise_http_error(stage="get_last_saved_signal_message_if_actionable", exc=exc)
 
     if not should_send:
         return {
             "status": "ok",
             "sent": False,
+            "chat_id": int(settings.TELEGRAM_CHAT_ID),
             "message": text,
         }
 
-    telegram_service = TelegramService()
-    asyncio.run(
-        telegram_service.send_message(
-            chat_id=int(settings.TELEGRAM_CHAT_ID),
-            text=text,
+    try:
+        telegram_service = TelegramService()
+    except Exception as exc:
+        _raise_http_error(stage="telegram_service_init", exc=exc)
+
+    try:
+        _run_telegram_send_batch(
+            telegram_service=telegram_service,
+            send_queue=[(int(settings.TELEGRAM_CHAT_ID), text)],
         )
-    )
+    except Exception as exc:
+        _raise_http_error(
+            stage="telegram_send",
+            exc=exc,
+            chat_id=int(settings.TELEGRAM_CHAT_ID),
+        )
 
     return {
         "status": "ok",
         "sent": True,
+        "chat_id": int(settings.TELEGRAM_CHAT_ID),
         "message": "Telegram notification sent",
     }
 
@@ -928,6 +1345,7 @@ def execute_manual_paper_trade(
     trade_fraction: float = Query(default=0.1, gt=0.0, lt=1.0),
     fee_rate: float = Query(default=0.001, ge=0.0, lt=1.0),
     timestamp: int | None = Query(default=None),
+    chat_id: int | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     service = PaperTradingService(db)
@@ -938,6 +1356,7 @@ def execute_manual_paper_trade(
         trade_fraction=trade_fraction,
         fee_rate=fee_rate,
         timestamp=timestamp,
+        chat_id=chat_id,
     )
 
 
@@ -1002,10 +1421,11 @@ def send_signals_summary_to_telegram(
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     if not settings.TELEGRAM_CHAT_ID:
-        return {
-            "status": "error",
-            "message": "TELEGRAM_CHAT_ID is not configured",
-        }
+        _raise_http_error(
+            stage="config",
+            status_code=500,
+            message="TELEGRAM_CHAT_ID is not configured",
+        )
 
     symbol_list = (
         [s.strip() for s in symbols.split(",") if s.strip()]
@@ -1013,42 +1433,58 @@ def send_signals_summary_to_telegram(
         else settings.get_default_symbols()
     )
 
-    notification_service = NotificationService(db)
-    should_send, text = notification_service.format_multi_symbol_signals_summary(
-        symbols=symbol_list,
-        timeframe=timeframe,
-        lag_periods=lag_periods,
-        future_steps=future_steps,
-        target_threshold=target_threshold,
-        buy_threshold=buy_threshold,
-        sell_threshold=sell_threshold,
-        cooldown_ms=cooldown_ms,
-        use_trend_filter=use_trend_filter,
-        use_rsi_filter=use_rsi_filter,
-        rsi_overbought=rsi_overbought,
-        rsi_oversold=rsi_oversold,
-        model_type=model_type,
-        actionable_only=actionable_only,
-    )
+    try:
+        notification_service = NotificationService(db)
+        should_send, text = notification_service.format_multi_symbol_signals_summary(
+            symbols=symbol_list,
+            timeframe=timeframe,
+            lag_periods=lag_periods,
+            future_steps=future_steps,
+            target_threshold=target_threshold,
+            buy_threshold=buy_threshold,
+            sell_threshold=sell_threshold,
+            cooldown_ms=cooldown_ms,
+            use_trend_filter=use_trend_filter,
+            use_rsi_filter=use_rsi_filter,
+            rsi_overbought=rsi_overbought,
+            rsi_oversold=rsi_oversold,
+            model_type=model_type,
+            actionable_only=actionable_only,
+        )
+    except Exception as exc:
+        _raise_http_error(stage="format_multi_symbol_signals_summary", exc=exc)
 
     if not should_send:
         return {
             "status": "ok",
             "sent": False,
+            "chat_id": int(settings.TELEGRAM_CHAT_ID),
             "message": text,
+            "symbols": symbol_list,
         }
 
-    telegram_service = TelegramService()
-    asyncio.run(
-        telegram_service.send_message(
-            chat_id=int(settings.TELEGRAM_CHAT_ID),
-            text=text,
+    try:
+        telegram_service = TelegramService()
+    except Exception as exc:
+        _raise_http_error(stage="telegram_service_init", exc=exc)
+
+    try:
+        _run_telegram_send_batch(
+            telegram_service=telegram_service,
+            send_queue=[(int(settings.TELEGRAM_CHAT_ID), text)],
         )
-    )
+    except Exception as exc:
+        _raise_http_error(
+            stage="telegram_send",
+            exc=exc,
+            chat_id=int(settings.TELEGRAM_CHAT_ID),
+            symbols=symbol_list,
+        )
 
     return {
         "status": "ok",
         "sent": True,
+        "chat_id": int(settings.TELEGRAM_CHAT_ID),
         "message": "Signals summary sent to Telegram",
         "symbols": symbol_list,
     }
@@ -1100,10 +1536,58 @@ def generate_and_save_multiple_signals(
 def subscribe_symbol(
     chat_id: int = Query(...),
     symbol: str = Query(...),
+    timeframe: str = Query(default=settings.DEFAULT_TIMEFRAME),
+    warmup: bool = Query(
+        default=True,
+        description="If true, prefetch candles + indicators for this symbol",
+    ),
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
+    """
+    Subscribe chat to a symbol and (optionally) warm up the dataset so signals work immediately.
+    This prevents 'Dataset is empty' errors right after subscribing a new symbol.
+    """
+    try:
+        normalized = _normalize_symbol_input(symbol)
+    except ValueError:
+        normalized = symbol
+
     service = SubscriptionService(db)
-    return service.subscribe(chat_id=chat_id, symbol=symbol)
+    result = service.subscribe(chat_id=chat_id, symbol=normalized)
+
+    if not warmup:
+        return result
+
+    # Only warm up on newly created subscription to reduce load.
+    if str(result.get("message", "")).lower() != "subscribed":
+        return result
+
+    try:
+        warmup_result = _warmup_symbol_data(
+            db=db,
+            symbol=normalized,
+            timeframe=timeframe,
+            limit=settings.OHLCV_LIMIT,
+        )
+        return {
+            **result,
+            "warmup": {
+                "status": "ok",
+                **warmup_result,
+            },
+        }
+    except Exception as exc:
+        # Do not fail the subscription if warmup fails; return a structured hint.
+        return {
+            **result,
+            "warmup": {
+                "status": "error",
+                "symbol": normalized,
+                "timeframe": timeframe,
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            },
+        }
 
 
 @app.post("/subscriptions/unsubscribe")
@@ -1135,72 +1619,127 @@ def send_subscription_summaries_to_telegram(
 ) -> dict[str, object]:
     sub_service = SubscriptionService(db)
     notification_service = NotificationService(db)
-    telegram_service = TelegramService()
+
+    try:
+        telegram_service = TelegramService()
+    except Exception as exc:
+        _raise_http_error(stage="telegram_service_init", exc=exc)
 
     chat_ids = sub_service.get_all_chat_ids()
 
     if not chat_ids:
         return {
             "status": "ok",
+            "chat_count": 0,
             "sent_count": 0,
+            "skipped_count": 0,
+            "results": [],
             "message": "No subscribed chats found",
         }
 
-    results = []
+    results: list[dict[str, object]] = []
+    send_queue: list[tuple[int, str]] = []
+
     sent_count = 0
     skipped_count = 0
+    format_error_count = 0
 
     for chat_id in chat_ids:
-        should_send, text, symbols = (
-            notification_service.format_multi_symbol_signals_summary_for_chat(
-                chat_id=chat_id,
-                timeframe=timeframe,
-                lag_periods=lag_periods,
-                future_steps=future_steps,
-                target_threshold=target_threshold,
-                buy_threshold=buy_threshold,
-                sell_threshold=sell_threshold,
-                cooldown_ms=cooldown_ms,
-                use_trend_filter=use_trend_filter,
-                use_rsi_filter=use_rsi_filter,
-                rsi_overbought=rsi_overbought,
-                rsi_oversold=rsi_oversold,
-                model_type=model_type,
-                actionable_only=actionable_only,
-            )
-        )
-
-        if should_send:
-            asyncio.run(
-                telegram_service.send_message(
+        try:
+            should_send, text, symbols = (
+                notification_service.format_multi_symbol_signals_summary_for_chat(
                     chat_id=chat_id,
-                    text=text,
+                    timeframe=timeframe,
+                    lag_periods=lag_periods,
+                    future_steps=future_steps,
+                    target_threshold=target_threshold,
+                    buy_threshold=buy_threshold,
+                    sell_threshold=sell_threshold,
+                    cooldown_ms=cooldown_ms,
+                    use_trend_filter=use_trend_filter,
+                    use_rsi_filter=use_rsi_filter,
+                    rsi_overbought=rsi_overbought,
+                    rsi_oversold=rsi_oversold,
+                    model_type=model_type,
+                    actionable_only=actionable_only,
                 )
             )
-            sent_count += 1
-            results.append(
-                {
-                    "chat_id": chat_id,
-                    "sent": True,
-                    "symbols": symbols,
-                }
-            )
-        else:
+
+            if should_send:
+                send_queue.append((int(chat_id), str(text)))
+                results.append(
+                    {
+                        "chat_id": chat_id,
+                        "queued": True,
+                        "sent": None,
+                        "symbols": symbols,
+                    }
+                )
+            else:
+                skipped_count += 1
+                results.append(
+                    {
+                        "chat_id": chat_id,
+                        "queued": False,
+                        "sent": False,
+                        "symbols": symbols,
+                        "message": text,
+                    }
+                )
+
+        except Exception as exc:
+            format_error_count += 1
             skipped_count += 1
             results.append(
                 {
                     "chat_id": chat_id,
+                    "queued": False,
                     "sent": False,
-                    "symbols": symbols,
-                    "message": text,
+                    "symbols": [],
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
                 }
             )
+
+    if not send_queue:
+        return {
+            "status": "ok",
+            "chat_count": len(chat_ids),
+            "sent_count": 0,
+            "skipped_count": skipped_count,
+            "format_error_count": format_error_count,
+            "results": results,
+            "message": "No messages to send (all skipped or no actionable signals)",
+        }
+
+    try:
+        _run_telegram_send_batch(
+            telegram_service=telegram_service,
+            send_queue=send_queue,
+        )
+    except Exception as exc:
+        _raise_http_error(
+            stage="telegram_send_batch",
+            exc=exc,
+            queued_count=len(send_queue),
+            chat_count=len(chat_ids),
+            skipped_count=skipped_count,
+        )
+
+    sent_count = len(send_queue)
+
+    # Update per-chat result entries (best-effort)
+    for item in results:
+        if item.get("queued") is True and item.get("sent") is None:
+            item["sent"] = True
 
     return {
         "status": "ok",
         "chat_count": len(chat_ids),
+        "queued_count": len(send_queue),
         "sent_count": sent_count,
         "skipped_count": skipped_count,
+        "format_error_count": format_error_count,
         "results": results,
     }
 
@@ -1268,6 +1807,7 @@ def update_strategy_profile(
     min_trade_usdt: float = Query(default=10.0, ge=0.0),
     min_position_usdt: float = Query(default=5.0, ge=0.0),
     max_position_fraction: float = Query(default=0.3, gt=0.0, le=1.0),
+    chat_id: int | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     service = StrategyProfileService(db)
@@ -1287,6 +1827,7 @@ def update_strategy_profile(
             "min_position_usdt": min_position_usdt,
             "max_position_fraction": max_position_fraction,
         },
+        chat_id=chat_id,
     )
 
     return {

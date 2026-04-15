@@ -24,6 +24,22 @@ class StrategyProfileService:
     def __init__(self, db: Session) -> None:
         self.db = db
 
+    def _profile_to_dict(self, profile: StrategyProfile) -> dict[str, object]:
+        return {
+            "model_type": profile.model_type,
+            "buy_threshold": profile.buy_threshold,
+            "sell_threshold": profile.sell_threshold,
+            "use_trend_filter": profile.use_trend_filter,
+            "use_rsi_filter": profile.use_rsi_filter,
+            "target_threshold": profile.target_threshold,
+            "cooldown_ms": profile.cooldown_ms,
+            "stop_loss_pct": profile.stop_loss_pct,
+            "take_profit_pct": profile.take_profit_pct,
+            "min_trade_usdt": profile.min_trade_usdt,
+            "min_position_usdt": profile.min_position_usdt,
+            "max_position_fraction": profile.max_position_fraction,
+        }
+
     def get_profile(
         self,
         symbol: str,
@@ -38,22 +54,8 @@ class StrategyProfileService:
                 )
                 .first()
             )
-
             if profile is not None:
-                return {
-                    "model_type": profile.model_type,
-                    "buy_threshold": profile.buy_threshold,
-                    "sell_threshold": profile.sell_threshold,
-                    "use_trend_filter": profile.use_trend_filter,
-                    "use_rsi_filter": profile.use_rsi_filter,
-                    "target_threshold": profile.target_threshold,
-                    "cooldown_ms": profile.cooldown_ms,
-                    "stop_loss_pct": profile.stop_loss_pct,
-                    "take_profit_pct": profile.take_profit_pct,
-                    "min_trade_usdt": profile.min_trade_usdt,
-                    "min_position_usdt": profile.min_position_usdt,
-                    "max_position_fraction": profile.max_position_fraction,
-                }
+                return self._profile_to_dict(profile)
 
         global_profile = (
             self.db.query(StrategyProfile)
@@ -63,22 +65,8 @@ class StrategyProfileService:
             )
             .first()
         )
-
         if global_profile is not None:
-            return {
-                "model_type": global_profile.model_type,
-                "buy_threshold": global_profile.buy_threshold,
-                "sell_threshold": global_profile.sell_threshold,
-                "use_trend_filter": global_profile.use_trend_filter,
-                "use_rsi_filter": global_profile.use_rsi_filter,
-                "target_threshold": global_profile.target_threshold,
-                "cooldown_ms": global_profile.cooldown_ms,
-                "stop_loss_pct": global_profile.stop_loss_pct,
-                "take_profit_pct": global_profile.take_profit_pct,
-                "min_trade_usdt": global_profile.min_trade_usdt,
-                "min_position_usdt": global_profile.min_position_usdt,
-                "max_position_fraction": global_profile.max_position_fraction,
-            }
+            return self._profile_to_dict(global_profile)
 
         return DEFAULT_PROFILE.copy()
 
@@ -123,4 +111,34 @@ class StrategyProfileService:
         self.db.commit()
         self.db.refresh(profile)
 
-        return self.get_profile(symbol=symbol, chat_id=chat_id)
+        return self._profile_to_dict(profile)
+
+    def delete_profile(
+        self,
+        symbol: str,
+        chat_id: int | None = None,
+    ) -> dict[str, object]:
+        profile = (
+            self.db.query(StrategyProfile)
+            .filter(
+                StrategyProfile.symbol == symbol,
+                StrategyProfile.chat_id == chat_id,
+            )
+            .first()
+        )
+
+        if profile is None:
+            return {
+                "status": "not_found",
+                "symbol": symbol,
+                "chat_id": chat_id,
+            }
+
+        self.db.delete(profile)
+        self.db.commit()
+
+        return {
+            "status": "ok",
+            "symbol": symbol,
+            "chat_id": chat_id,
+        }

@@ -5,7 +5,8 @@ from datetime import datetime
 import requests
 from sqlalchemy.orm import Session
 
-from app.core.model_profiles import get_model_profile, set_model_profile
+from app.services.indicator_service import IndicatorService
+from app.services.ingestion_service import IngestionService
 from app.services.paper_trading_service import PaperTradingService
 from app.services.strategy_profile_service import StrategyProfileService
 from app.services.strategy_service import StrategyService
@@ -19,6 +20,49 @@ class NotificationService:
         self.paper_trading_service = PaperTradingService(db)
         self.strategy_profile_service = StrategyProfileService(db)
 
+    def _auto_warmup_symbol_data(
+        self,
+        *,
+        symbol: str,
+        timeframe: str,
+        ohlcv_limit: int = 500,
+    ) -> dict[str, object]:
+        """
+        Best-effort “warmup” for a symbol/timeframe when a user requests a signal but the dataset is empty.
+
+        What it does:
+        - fetches latest OHLCV into candles table
+        - calculates indicators for available candles
+
+        This prevents user-facing crashes like: ValueError("Dataset is empty").
+        """
+        ingestion = IngestionService(self.db)
+        indicators = IndicatorService(self.db)
+
+        ingest_result = ingestion.update_ohlcv(
+            symbol=symbol,
+            timeframe=timeframe,
+            limit=ohlcv_limit,
+        )
+        indicators_result = indicators.calculate_and_save(
+            symbol=symbol,
+            timeframe=timeframe,
+        )
+
+        return {
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "ingest": ingest_result,
+            "indicators": indicators_result,
+        }
+
+    def format_timestamp_ms(self, timestamp_ms: int | None) -> str:
+        if not timestamp_ms:
+            return "n/a"
+
+        dt = datetime.fromtimestamp(timestamp_ms / 1000)
+        return dt.strftime("%Y-%m-%d %H:%M")
+
     def format_last_signal_message(
         self,
         symbol: str,
@@ -27,15 +71,34 @@ class NotificationService:
         future_steps: int = 3,
         buy_threshold: float = 0.7,
         sell_threshold: float = 0.3,
+        chat_id: int | None = None,
     ) -> str:
-        signal_data = self.strategy_service.generate_signal(
-            symbol=symbol,
-            timeframe=timeframe,
-            lag_periods=lag_periods,
-            future_steps=future_steps,
-            buy_threshold=buy_threshold,
-            sell_threshold=sell_threshold,
-        )
+        try:
+            signal_data = self.strategy_service.generate_signal(
+                symbol=symbol,
+                timeframe=timeframe,
+                lag_periods=lag_periods,
+                future_steps=future_steps,
+                buy_threshold=buy_threshold,
+                sell_threshold=sell_threshold,
+                chat_id=chat_id,
+            )
+        except ValueError as exc:
+            # Auto-warmup: if user asks for a signal before any candles/indicators exist yet.
+            msg = str(exc)
+            if "Dataset is empty" in msg or "No data available" in msg:
+                self._auto_warmup_symbol_data(symbol=symbol, timeframe=timeframe)
+                signal_data = self.strategy_service.generate_signal(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    lag_periods=lag_periods,
+                    future_steps=future_steps,
+                    buy_threshold=buy_threshold,
+                    sell_threshold=sell_threshold,
+                    chat_id=chat_id,
+                )
+            else:
+                raise
 
         return (
             f"📊 Signal for {signal_data['symbol']} [{signal_data['timeframe']}]\n"
@@ -47,29 +110,60 @@ class NotificationService:
             f"Signal: {signal_data['signal']}"
         )
 
-    def format_portfolio_message(self, symbol: str) -> str:
-        portfolio = self.paper_trading_service.get_portfolio(symbol)
+    def format_portfolio_message(
+        self,
+        symbol: str,
+        chat_id: int | None = None,
+    ) -> str:
+        portfolio = self.paper_trading_service.get_portfolio(
+            symbol=symbol,
+            chat_id=chat_id,
+        )
+
+        average_entry_price = portfolio.get("average_entry_price")
+        avg_entry_text = (
+            f"{float(average_entry_price):.4f}"
+            if average_entry_price is not None
+            else "n/a"
+        )
 
         return (
             f"💼 Portfolio [{portfolio['symbol']}]\n"
-            f"USDT Balance: {portfolio['usdt_balance']:.4f}\n"
-            f"Asset Balance: {portfolio['asset_balance']:.8f}\n"
+            f"USDT Balance: {float(portfolio['usdt_balance']):.4f}\n"
+            f"Asset Balance: {float(portfolio['asset_balance']):.8f}\n"
+            f"Average Entry Price: {avg_entry_text}\n"
+            f"Realized PnL: {float(portfolio['realized_pnl']):.4f}\n"
+            f"Unrealized PnL: {float(portfolio['unrealized_pnl']):.4f}\n"
+            f"Position Value: {float(portfolio['position_value']):.4f}\n"
+            f"Portfolio Value: {float(portfolio['portfolio_value']):.4f}\n"
             f"Updated At: {portfolio['updated_at']}"
         )
 
-    def format_recent_trades_message(self, symbol: str, limit: int = 5) -> str:
+    def format_recent_trades_message(
+        self,
+        symbol: str,
+        limit: int = 5,
+        chat_id: int | None = None,
+    ) -> str:
         trades = self.paper_trading_service.get_recent_trades(
-            symbol=symbol, limit=limit
+            symbol=symbol,
+            chat_id=chat_id,
+            limit=limit,
         )
 
         if not trades:
             return f"📭 No trades found for {symbol}"
 
         lines = [f"🧾 Recent trades for {symbol}:"]
+
         for trade in trades:
+            ts_text = self.format_timestamp_ms(trade.get("timestamp"))
             lines.append(
-                f"- {trade['side']} | price={trade['price']:.2f} | "
-                f"amount={trade['amount']:.8f} | fee={trade['fee']:.4f}"
+                f"- {trade['side']} | "
+                f"price={float(trade['price']):.4f} | "
+                f"amount={float(trade['amount']):.8f} | "
+                f"fee={float(trade['fee']):.4f} | "
+                f"time={ts_text}"
             )
 
         return "\n".join(lines)
@@ -101,18 +195,11 @@ class NotificationService:
             f"🚨 Actionable signal for {signal['symbol']} [{signal['timeframe']}]\n"
             f"Timestamp: {signal['timestamp']}\n"
             f"Signal: {signal['signal']}\n"
-            f"Confidence: {signal['confidence']:.4f}\n"
+            f"Confidence: {float(signal['confidence']):.4f}\n"
             f"Price: {signal['price']}"
         )
 
         return True, message
-
-    def format_timestamp_ms(self, timestamp_ms: int | None) -> str:
-        if not timestamp_ms:
-            return "n/a"
-
-        dt = datetime.fromtimestamp(timestamp_ms / 1000)
-        return dt.strftime("%Y-%m-%d %H:%M")
 
     def format_multi_symbol_signals_summary(
         self,
@@ -130,28 +217,67 @@ class NotificationService:
         rsi_oversold: float = 30.0,
         model_type: str = "logistic_regression",
         actionable_only: bool = True,
+        chat_id: int | None = None,
     ) -> tuple[bool, str]:
-        scan_result = self.strategy_service.scan_multiple_signals(
-            symbols=symbols,
-            timeframe=timeframe,
-            lag_periods=lag_periods,
-            future_steps=future_steps,
-            target_threshold=target_threshold,
-            buy_threshold=buy_threshold,
-            sell_threshold=sell_threshold,
-            cooldown_ms=cooldown_ms,
-            use_trend_filter=use_trend_filter,
-            use_rsi_filter=use_rsi_filter,
-            rsi_overbought=rsi_overbought,
-            rsi_oversold=rsi_oversold,
-            model_type=model_type,
-        )
+        results: list[dict[str, object]] = []
 
-        results = scan_result["results"]
+        for symbol in symbols:
+            try:
+                try:
+                    item = self.strategy_service.generate_signal(
+                        symbol=symbol,
+                        timeframe=timeframe,
+                        lag_periods=lag_periods,
+                        future_steps=future_steps,
+                        target_threshold=target_threshold,
+                        buy_threshold=buy_threshold,
+                        sell_threshold=sell_threshold,
+                        cooldown_ms=cooldown_ms,
+                        use_trend_filter=use_trend_filter,
+                        use_rsi_filter=use_rsi_filter,
+                        rsi_overbought=rsi_overbought,
+                        rsi_oversold=rsi_oversold,
+                        model_type=model_type,
+                        chat_id=chat_id,
+                    )
+                except ValueError as exc:
+                    msg = str(exc)
+                    if "Dataset is empty" in msg or "No data available" in msg:
+                        self._auto_warmup_symbol_data(
+                            symbol=symbol, timeframe=timeframe
+                        )
+                        item = self.strategy_service.generate_signal(
+                            symbol=symbol,
+                            timeframe=timeframe,
+                            lag_periods=lag_periods,
+                            future_steps=future_steps,
+                            target_threshold=target_threshold,
+                            buy_threshold=buy_threshold,
+                            sell_threshold=sell_threshold,
+                            cooldown_ms=cooldown_ms,
+                            use_trend_filter=use_trend_filter,
+                            use_rsi_filter=use_rsi_filter,
+                            rsi_overbought=rsi_overbought,
+                            rsi_oversold=rsi_oversold,
+                            model_type=model_type,
+                            chat_id=chat_id,
+                        )
+                    else:
+                        raise
+                results.append(item)
+            except Exception as exc:
+                results.append(
+                    {
+                        "status": "error",
+                        "symbol": symbol,
+                        "timeframe": timeframe,
+                        "error": str(exc),
+                    }
+                )
 
         filtered_results = []
         for item in results:
-            if item.get("status") != "ok":
+            if item.get("status") == "error":
                 continue
             if actionable_only and item.get("signal") == "HOLD":
                 continue
@@ -169,8 +295,9 @@ class NotificationService:
         ]
 
         for item in filtered_results:
-            symbol = item["symbol"]
-            signal = item["signal"]
+            symbol = str(item["symbol"])
+            signal = str(item["signal"])
+            model_used = str(item.get("model_type") or model_type)
             probability_up = float(item["probability_up"])
             close_price = float(item["close"])
             rsi = item.get("rsi")
@@ -181,7 +308,7 @@ class NotificationService:
             rsi_text = f"{float(rsi):.2f}" if rsi is not None else "n/a"
 
             lines.append(
-                f"{symbol} — {signal}\n"
+                f"{symbol} ({model_used}) — {signal}\n"
                 f"Time: {ts_text}\n"
                 f"Price: {close_price:.4f}\n"
                 f"ProbUp: {probability_up:.4f}\n"
@@ -206,20 +333,9 @@ class NotificationService:
         rsi_overbought: float = 70.0,
         rsi_oversold: float = 30.0,
         model_type: str = "logistic_regression",
+        chat_id: int | None = None,
     ) -> str:
-        if model_type == "lstm":
-            result = self._get_lstm_signal_via_api(
-                symbol=symbol,
-                timeframe=timeframe,
-                lag_periods=lag_periods,
-                future_steps=future_steps,
-                target_threshold=target_threshold,
-                buy_threshold=buy_threshold,
-                sell_threshold=sell_threshold,
-                use_trend_filter=use_trend_filter,
-                use_rsi_filter=use_rsi_filter,
-            )
-        else:
+        try:
             result = self.strategy_service.generate_signal(
                 symbol=symbol,
                 timeframe=timeframe,
@@ -234,7 +350,31 @@ class NotificationService:
                 rsi_overbought=rsi_overbought,
                 rsi_oversold=rsi_oversold,
                 model_type=model_type,
+                chat_id=chat_id,
             )
+        except ValueError as exc:
+            msg = str(exc)
+            if "Dataset is empty" in msg or "No data available" in msg:
+                # Auto-fetch candles + compute indicators, then retry once.
+                self._auto_warmup_symbol_data(symbol=symbol, timeframe=timeframe)
+                result = self.strategy_service.generate_signal(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    lag_periods=lag_periods,
+                    future_steps=future_steps,
+                    target_threshold=target_threshold,
+                    buy_threshold=buy_threshold,
+                    sell_threshold=sell_threshold,
+                    cooldown_ms=cooldown_ms,
+                    use_trend_filter=use_trend_filter,
+                    use_rsi_filter=use_rsi_filter,
+                    rsi_overbought=rsi_overbought,
+                    rsi_oversold=rsi_oversold,
+                    model_type=model_type,
+                    chat_id=chat_id,
+                )
+            else:
+                raise
 
         rsi = result.get("rsi")
         rsi_text = f"{float(rsi):.2f}" if rsi is not None else "n/a"
@@ -277,7 +417,6 @@ class NotificationService:
 
             for signal in signals:
                 ts_text = self.format_timestamp_ms(signal.get("timestamp"))
-
                 lines.append(
                     f"  {signal['signal']} | "
                     f"price={float(signal['price']):.4f} | "
@@ -307,7 +446,6 @@ class NotificationService:
         model_type: str = "auto",
         actionable_only: bool = True,
     ) -> tuple[bool, str, list[str]]:
-
         sub_service = SubscriptionService(self.db)
         symbols = sub_service.get_symbols_for_chat(chat_id)
 
@@ -329,6 +467,7 @@ class NotificationService:
             rsi_oversold=rsi_oversold,
             model_type=model_type,
             actionable_only=actionable_only,
+            chat_id=chat_id,
         )
 
         return should_send, text, symbols
@@ -369,41 +508,14 @@ class NotificationService:
 
         return "\n".join(lines)
 
-    def _get_lstm_signal_via_api(
+    def format_strategy_profile_message(
         self,
         symbol: str,
-        timeframe: str,
-        lag_periods: int = 3,
-        future_steps: int = 3,
-        target_threshold: float = 0.002,
-        buy_threshold: float = 0.55,
-        sell_threshold: float = 0.2,
-        use_trend_filter: bool = False,
-        use_rsi_filter: bool = False,
-    ) -> dict[str, object]:
-        response = requests.get(
-            "http://localhost:8000/strategy/signal/latest-lstm",
-            params={
-                "symbol": symbol,
-                "timeframe": timeframe,
-                "lag_periods": lag_periods,
-                "future_steps": future_steps,
-                "target_threshold": target_threshold,
-                "buy_threshold": buy_threshold,
-                "sell_threshold": sell_threshold,
-                "use_trend_filter": use_trend_filter,
-                "use_rsi_filter": use_rsi_filter,
-            },
-            timeout=30,
-        )
-        response.raise_for_status()
-        return response.json()
-
-    def format_strategy_profile_message(
-        self, symbol: str, chat_id: int | None = None
+        chat_id: int | None = None,
     ) -> str:
         profile = self.strategy_profile_service.get_profile(
-            symbol=symbol, chat_id=chat_id
+            symbol=symbol,
+            chat_id=chat_id,
         )
 
         return (
