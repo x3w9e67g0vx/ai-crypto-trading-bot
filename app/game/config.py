@@ -40,6 +40,14 @@ GAME_SYMBOLS = STARTER_SYMBOLS + (
     "UNI/USDT",
 )
 
+# AI personas trade the starter pairs on closed candles of the timeframe
+# their models were trained on.
+AI_SYMBOLS = STARTER_SYMBOLS
+AI_TIMEFRAME = "5m"
+AI_MIN_ORDER_USDT = 10.0
+# Free players see AI positions as they were this long ago.
+AI_VISIBILITY_DELAY_MS = 60 * 60 * 1000
+
 DAY_MS = 24 * 60 * 60 * 1000
 WEEK_MS = 7 * DAY_MS
 
