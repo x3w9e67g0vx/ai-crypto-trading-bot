@@ -1,0 +1,147 @@
+from __future__ import annotations
+
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Column,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+)
+from sqlalchemy.orm import relationship
+
+from app.core.db.base import Base
+
+
+class Player(Base):
+    __tablename__ = "players"
+
+    id = Column(Integer, primary_key=True, index=True)
+    telegram_id = Column(BigInteger, nullable=True, unique=True, index=True)
+    nickname = Column(String, nullable=False)
+    language = Column(String, nullable=False, default="ru")
+
+    is_ai = Column(Boolean, nullable=False, default=False)
+    ai_key = Column(String, nullable=True, unique=True)
+
+    league_tier = Column(String, nullable=False, default="bronze")
+    xp = Column(Integer, nullable=False, default=0)
+    is_banned = Column(Boolean, nullable=False, default=False)
+    is_pro_until = Column(BigInteger, nullable=True)
+    referred_by_id = Column(Integer, ForeignKey("players.id"), nullable=True)
+
+    created_at = Column(BigInteger, nullable=False)
+
+
+class Season(Base):
+    __tablename__ = "seasons"
+    __table_args__ = (
+        UniqueConstraint("kind", "starts_at", name="uq_season_kind_starts_at"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    kind = Column(String, nullable=False, index=True)
+    starts_at = Column(BigInteger, nullable=False)
+    ends_at = Column(BigInteger, nullable=False)
+    # active -> closing (ended, positions still being closed) -> finished
+    status = Column(String, nullable=False, default="active", index=True)
+
+
+class Portfolio(Base):
+    __tablename__ = "portfolios"
+    __table_args__ = (
+        UniqueConstraint("player_id", "season_id", name="uq_portfolio_player_season"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    player_id = Column(Integer, ForeignKey("players.id"), nullable=False, index=True)
+    season_id = Column(Integer, ForeignKey("seasons.id"), nullable=False, index=True)
+    cash = Column(Float, nullable=False)
+    trades_count = Column(Integer, nullable=False, default=0)
+    created_at = Column(BigInteger, nullable=False)
+
+    player = relationship("Player")
+    season = relationship("Season")
+    positions = relationship("Position", back_populates="portfolio")
+
+
+class Position(Base):
+    __tablename__ = "positions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    portfolio_id = Column(Integer, ForeignKey("portfolios.id"), nullable=False, index=True)
+    symbol = Column(String, nullable=False, index=True)
+    side = Column(String, nullable=False)  # long | short
+    qty = Column(Float, nullable=False)
+    entry_price = Column(Float, nullable=False)
+    # Cash taken out of the portfolio at open, excluding the fee.
+    reserved = Column(Float, nullable=False)
+    stop_loss = Column(Float, nullable=True)
+    take_profit = Column(Float, nullable=True)
+    opened_at = Column(BigInteger, nullable=False)
+
+    closed_at = Column(BigInteger, nullable=True, index=True)
+    exit_price = Column(Float, nullable=True)
+    # Net change of cash over the position's life, both fees included.
+    pnl = Column(Float, nullable=True)
+    close_reason = Column(String, nullable=True)  # manual | stop_loss | take_profit | season_end
+
+    portfolio = relationship("Portfolio", back_populates="positions")
+
+
+class Fill(Base):
+    __tablename__ = "fills"
+
+    id = Column(Integer, primary_key=True, index=True)
+    portfolio_id = Column(Integer, ForeignKey("portfolios.id"), nullable=False, index=True)
+    position_id = Column(Integer, ForeignKey("positions.id"), nullable=False, index=True)
+    symbol = Column(String, nullable=False)
+    side = Column(String, nullable=False)  # buy | sell
+    qty = Column(Float, nullable=False)
+    price = Column(Float, nullable=False)
+    fee = Column(Float, nullable=False)
+    # Only player-initiated fills count toward the daily trade limit.
+    is_user = Column(Boolean, nullable=False, default=True)
+    created_at = Column(BigInteger, nullable=False, index=True)
+
+
+class PortfolioSnapshot(Base):
+    __tablename__ = "portfolio_snapshots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    portfolio_id = Column(Integer, ForeignKey("portfolios.id"), nullable=False, index=True)
+    value = Column(Float, nullable=False)
+    created_at = Column(BigInteger, nullable=False)
+
+
+class LeagueGroup(Base):
+    __tablename__ = "league_groups"
+    __table_args__ = (
+        UniqueConstraint("season_id", "tier", "number", name="uq_league_group"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    season_id = Column(Integer, ForeignKey("seasons.id"), nullable=False, index=True)
+    tier = Column(String, nullable=False)
+    number = Column(Integer, nullable=False)
+
+
+class LeagueMembership(Base):
+    __tablename__ = "league_memberships"
+
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("league_groups.id"), nullable=False, index=True)
+    portfolio_id = Column(Integer, ForeignKey("portfolios.id"), nullable=False, unique=True)
+    joined_at = Column(BigInteger, nullable=False)
+
+
+class Badge(Base):
+    __tablename__ = "badges"
+
+    id = Column(Integer, primary_key=True, index=True)
+    player_id = Column(Integer, ForeignKey("players.id"), nullable=False, index=True)
+    code = Column(String, nullable=False)  # sniper | iron_nerves | beat_ai | recruiter
+    season_id = Column(Integer, ForeignKey("seasons.id"), nullable=True)
+    created_at = Column(BigInteger, nullable=False)
