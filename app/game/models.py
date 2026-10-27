@@ -145,3 +145,21 @@ class Badge(Base):
     code = Column(String, nullable=False)  # sniper | iron_nerves | beat_ai | recruiter
     season_id = Column(Integer, ForeignKey("seasons.id"), nullable=True)
     created_at = Column(BigInteger, nullable=False)
+
+
+class AiDecision(Base):
+    """What an AI persona thought about a closed candle, traded on or not."""
+
+    __tablename__ = "ai_decisions"
+    __table_args__ = (
+        UniqueConstraint("player_id", "symbol", "candle_ts", name="uq_ai_decision_candle"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    player_id = Column(Integer, ForeignKey("players.id"), nullable=False, index=True)
+    symbol = Column(String, nullable=False)
+    # Open time of the candle the model looked at.
+    candle_ts = Column(BigInteger, nullable=False, index=True)
+    probability_up = Column(Float, nullable=False)
+    view = Column(String, nullable=False)  # bullish | bearish | neutral
+    created_at = Column(BigInteger, nullable=False)
