@@ -4,7 +4,7 @@ import time
 
 from sqlalchemy.orm import Session
 
-from app.db.models import TelegramSubscription
+from app.core.db.models import TelegramSubscription
 
 
 class SubscriptionService:

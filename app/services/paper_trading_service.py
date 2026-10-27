@@ -4,7 +4,7 @@ import time
 
 from sqlalchemy.orm import Session
 
-from app.db.models import PortfolioState, Trade
+from app.core.db.models import PortfolioState, Trade
 from app.services.paper_trade_log_service import PaperTradeLogService
 from app.services.strategy_service import StrategyService
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.db.models import Signal
+from app.core.db.models import Signal
 from app.services.lstm_model_service import LSTMModelService
 from app.services.ml_model_service import MLModelService
 from app.services.strategy_profile_service import StrategyProfileService

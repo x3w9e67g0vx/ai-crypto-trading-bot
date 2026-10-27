@@ -1,4 +1,4 @@
-from app.db.models import (
+from app.core.db.models import (
     Candle,
     Indicator,
     ModelTrainingRun,

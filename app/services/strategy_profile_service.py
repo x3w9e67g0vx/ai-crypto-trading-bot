@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.db.models import StrategyProfile
+from app.core.db.models import StrategyProfile
 
 DEFAULT_PROFILE: dict[str, object] = {
     "model_type": "random_forest",

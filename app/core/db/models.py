@@ -12,7 +12,7 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 
-from app.db.base import Base
+from app.core.db.base import Base
 
 
 class Candle(Base):

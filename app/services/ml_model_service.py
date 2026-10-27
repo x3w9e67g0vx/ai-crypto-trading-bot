@@ -16,7 +16,7 @@ from sklearn.metrics import (
 from sklearn.model_selection import train_test_split
 from sqlalchemy.orm import Session
 
-from app.db.models import ModelTrainingRun
+from app.core.db.models import ModelTrainingRun
 from app.services.ml_dataset_service import MLDatasetService
 
 

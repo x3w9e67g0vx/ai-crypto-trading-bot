@@ -8,10 +8,10 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.db.base import Base
-from app.db.dependencies import get_db
-from app.db.models import TelegramSubscription
-from app.db.session import engine
+from app.core.db.base import Base
+from app.core.db.dependencies import get_db
+from app.core.db.models import TelegramSubscription
+from app.core.db.session import engine
 from app.miniapp.dependencies import miniapp_auth
 from app.services.backtest_service import BacktestService
 from app.services.indicator_service import IndicatorService

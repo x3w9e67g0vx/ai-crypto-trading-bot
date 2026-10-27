@@ -3,7 +3,7 @@ from __future__ import annotations
 import pandas as pd
 from sqlalchemy.orm import Session
 
-from app.db.models import Candle, Indicator
+from app.core.db.models import Candle, Indicator
 
 
 class MLDatasetService:

@@ -15,12 +15,13 @@ from aiogram.types import (
 )
 
 from app.core.config import settings
-from app.db.session import SessionLocal
+from app.core.db.session import SessionLocal
 from app.services.chat_settings_service import ChatSettingsService
 from app.services.indicator_service import IndicatorService
 from app.services.ingestion_service import IngestionService
 from app.services.market_data_service import MarketDataService
 from app.services.notification_service import NotificationService
+from app.services.paper_trading_service import PaperTradingService
 from app.services.subscription_service import SubscriptionService
 
 bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
@@ -48,7 +49,7 @@ I18N: dict[str, dict[str, str]] = {
             "MINIAPP_URL=https://your-domain.com/miniapp"
         ),
         "miniapp_open": "Открывай Mini App по кнопке ниже (и через меню внизу):",
-        "menu_pinned": "Готово. Mini App закреплён в меню (кнопка внизу справа).",
+        "menu_pinned": "Готово. Mini App закреплён в меню (кнопка внизу слева).",
     },
     "en": {
         "status_ok": "Bot is running normally.",
@@ -154,51 +155,28 @@ def get_help_text() -> str:
         "AI Crypto Trading Bot\n\n"
         "Команды:\n"
         "/start — старт\n"
-        "/help — список команд\n"
-        "/status — статус бота\n"
-        "/ping — проверка\n"
+        "/help — помощь\n"
+        "/lang — язык (RU/EN)\n"
+        "/status — статус\n"
+        "/ping — ping\n"
         "/chatid — показать chat_id\n"
-        "/miniapp — открыть Telegram Mini App\n"
-        "/menu — закрепить Mini App в меню (кнопка внизу)\n"
-        "/available_symbols — доступные торговые пары\n"
-        "/find <text> — найти пары, например /find BTC\n"
-        "/signals — actionable summary по вашим подпискам или default symbols\n"
-        "/scan_all — summary по вашим подпискам или default symbols, включая HOLD\n"
-        "/signals_auto — actionable summary через auto profiles\n"
-        "/scan_all_auto — summary через auto profiles, включая HOLD\n"
-        "/signals_lstm — actionable summary через LSTM\n"
-        "/scan_all_lstm — summary через LSTM, включая HOLD\n"
-        "/signal_btc — сигнал по BTC/USDT\n"
-        "/signal_eth — сигнал по ETH/USDT\n"
-        "/signal_sol — сигнал по SOL/USDT\n"
-        "/signal_btc_lstm — сигнал LSTM по BTC/USDT\n"
-        "/signal_eth_lstm — сигнал LSTM по ETH/USDT\n"
-        "/signal_sol_lstm — сигнал LSTM по SOL/USDT\n"
-        "/signal_btc_auto — авто-сигнал по BTC/USDT\n"
-        "/signal_eth_auto — авто-сигнал по ETH/USDT\n"
-        "/signal_sol_auto — авто-сигнал по SOL/USDT\n"
+        "/miniapp — открыть Mini App\n"
+        "/menu — закрепить Mini App в меню\n"
+        "\n"
+        "/signals — сигналы (actionable)\n"
+        "/scan_all — сигналы (включая HOLD)\n"
         "/signal <symbol> — сигнал по паре, например /signal BTC/USDT\n"
-        "/profile <symbol> — активный профиль пары, например /profile BTC/USDT\n"
-        "/set_model <symbol> <model> — сменить модель, например /set_model BTC/USDT lstm\n"
-        "/portfolio — paper portfolio BTC/USDT\n"
-        "/trades — последние сделки BTC/USDT\n"
-        "/last_signals — последние сохранённые сигналы по вашим подпискам или default symbols\n"
-        "/subscribe <symbol> — подписаться, например /subscribe BTC/USDT\n"
-        "/unsubscribe <symbol> — отписаться, например /unsubscribe ETH/USDT\n"
-        "/subscribe_btc — подписаться на BTC/USDT\n"
-        "/subscribe_eth — подписаться на ETH/USDT\n"
-        "/subscribe_sol — подписаться на SOL/USDT\n"
-        "/unsubscribe_btc — отписаться от BTC/USDT\n"
-        "/unsubscribe_eth — отписаться от ETH/USDT\n"
-        "/unsubscribe_sol — отписаться от SOL/USDT\n"
+        "\n"
+        "/subscribe <symbol> — подписаться\n"
+        "/unsubscribe <symbol> — отписаться\n"
         "/my_symbols — мои подписки\n"
-        "/profile_btc — активный профиль BTC/USDT\n"
-        "/profile_eth — активный профиль ETH/USDT\n"
-        "/profile_sol — активный профиль SOL/USDT\n"
-        "/set_btc_lstm — переключить BTC/USDT на LSTM\n"
-        "/set_btc_rf — переключить BTC/USDT на Random Forest\n"
-        "/set_eth_rf — переключить ETH/USDT на Random Forest\n"
-        "/set_sol_rf — переключить SOL/USDT на Random Forest\n"
+        "\n"
+        "/available_symbols — доступные пары\n"
+        "/find <text> — поиск пары, например /find BTC\n"
+        "\n"
+        "/portfolio — paper-портфель\n"
+        "/trades — последние сделки\n"
+        "/last_signals — последние сохранённые сигналы\n"
     )
 
 
@@ -207,25 +185,28 @@ def get_help_text_en() -> str:
         "AI Crypto Trading Bot\n\n"
         "Commands:\n"
         "/start — start\n"
-        "/help — command list\n"
+        "/help — help\n"
         "/lang — language (RU/EN)\n"
         "/status — status\n"
         "/ping — ping\n"
         "/chatid — show chat_id\n"
-        "/miniapp — open Telegram Mini App\n"
+        "/miniapp — open Mini App\n"
         "/menu — pin Mini App to the menu button\n"
-        "/available_symbols — available symbols\n"
-        "/find <text> — search symbols, e.g. /find BTC\n"
-        "/signals — actionable summary for your subscriptions or default symbols\n"
-        "/scan_all — summary including HOLD\n"
+        "\n"
+        "/signals — signals (actionable)\n"
+        "/scan_all — signals (including HOLD)\n"
         "/signal <symbol> — signal for a symbol, e.g. /signal BTC/USDT\n"
-        "/profile <symbol> — active strategy profile\n"
-        "/set_model <symbol> <model> — change model type\n"
+        "\n"
         "/subscribe <symbol> — subscribe\n"
         "/unsubscribe <symbol> — unsubscribe\n"
         "/my_symbols — my subscriptions\n"
+        "\n"
+        "/available_symbols — available symbols\n"
+        "/find <text> — search symbols, e.g. /find BTC\n"
+        "\n"
         "/portfolio — paper portfolio\n"
         "/trades — recent trades\n"
+        "/last_signals — recent saved signals\n"
     )
 
 
@@ -717,6 +698,88 @@ async def portfolio_handler(message: Message) -> None:
             chat_id=message.chat.id,
         )
         await message.answer(text)
+    finally:
+        db.close()
+
+
+@dp.message(Command("paper_exec"))
+async def paper_exec_handler(message: Message) -> None:
+    """
+    Execute a paper trade based on the latest generated signal for a symbol.
+    Uses chat_id so paper trading is per-user/per-chat.
+    """
+    parts = (message.text or "").split(maxsplit=1)
+
+    symbol = "BTC/USDT"
+    if len(parts) >= 2:
+        try:
+            symbol = normalize_symbol_input(parts[1])
+        except ValueError as exc:
+            await message.answer(str(exc))
+            return
+
+    db = SessionLocal()
+    try:
+        service = PaperTradingService(db)
+
+        try:
+            result = service.execute_latest_signal(
+                symbol=symbol,
+                timeframe="5m",
+                model_type="auto",
+                chat_id=message.chat.id,
+            )
+        except Exception as exc:
+            msg = str(exc)
+            if "Dataset is empty" in msg or "No data available" in msg:
+                _trigger_symbol_warmup(symbol, timeframe="5m")
+
+                if get_lang(message) == "en":
+                    await message.answer(
+                        f"Not enough data for {symbol}. Warmup started — try again in 1–2 minutes."
+                    )
+                else:
+                    await message.answer(
+                        f"Недостаточно данных для {symbol}. Запустил warmup — попробуй снова через 1–2 минуты."
+                    )
+                return
+
+            raise
+
+        action = str(result.get("action", "NO_ACTION"))
+        executed = bool(result.get("executed", False))
+        price = result.get("price")
+        amount = result.get("amount")
+        fee = result.get("fee")
+        exit_reason = result.get("exit_reason") or "n/a"
+        portfolio = result.get("portfolio") or {}
+        portfolio_value = portfolio.get("portfolio_value")
+        realized_pnl = portfolio.get("realized_pnl")
+
+        if get_lang(message) == "en":
+            await message.answer(
+                "Paper trade\n"
+                f"Symbol: {symbol}\n"
+                f"Action: {action} (executed={executed})\n"
+                f"Price: {price}\n"
+                f"Amount: {amount}\n"
+                f"Fee: {fee}\n"
+                f"Exit reason: {exit_reason}\n"
+                f"Portfolio value: {portfolio_value}\n"
+                f"Realized PnL: {realized_pnl}"
+            )
+        else:
+            await message.answer(
+                "Paper trade\n"
+                f"Символ: {symbol}\n"
+                f"Действие: {action} (executed={executed})\n"
+                f"Цена: {price}\n"
+                f"Количество: {amount}\n"
+                f"Комиссия: {fee}\n"
+                f"Причина выхода: {exit_reason}\n"
+                f"Стоимость портфеля: {portfolio_value}\n"
+                f"Realized PnL: {realized_pnl}"
+            )
     finally:
         db.close()
 

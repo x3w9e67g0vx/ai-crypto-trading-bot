@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.db.models import Candle
+from app.core.db.models import Candle
 from app.services.market_data_service import MarketDataService
 
 

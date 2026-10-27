@@ -4,7 +4,7 @@ import time
 
 from sqlalchemy.orm import Session
 
-from app.db.models import PaperTradeLog
+from app.core.db.models import PaperTradeLog
 
 
 class PaperTradeLogService:
