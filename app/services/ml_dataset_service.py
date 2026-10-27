@@ -127,3 +127,21 @@ class MLDatasetService:
             df = df.dropna().reset_index(drop=True)
 
         return df
+
+    def prepare_inference_frame(
+        self,
+        symbol: str,
+        timeframe: str,
+        lag_periods: int = 3,
+    ) -> pd.DataFrame:
+        """Features up to the last closed candle; unlike prepare_dataset, rows
+        whose target is not known yet are kept."""
+        df = self.load_base_dataframe(symbol=symbol, timeframe=timeframe)
+
+        if df.empty:
+            return df
+
+        df = self.add_basic_features(df)
+        df = self.add_lag_features(df, lag_periods=lag_periods)
+
+        return df.dropna().reset_index(drop=True)

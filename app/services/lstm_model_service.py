@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
-from app.services.ml_model_service import MLModelService
+from app.services.ml_dataset_service import MLDatasetService
 
 
 @dataclass
@@ -57,10 +57,10 @@ class PriceLSTM(nn.Module):
 
 
 class LSTMModelService:
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: Session, model_dir: Path | None = None) -> None:
         self.db = db
-        self.ml_model_service = MLModelService(db)
-        self.base_dir = Path("artifacts/models")
+        self.dataset_service = MLDatasetService(db)
+        self.base_dir = model_dir or Path("artifacts/models")
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
     def get_lstm_model_path(self, symbol: str, timeframe: str) -> str:
@@ -125,12 +125,11 @@ class LSTMModelService:
         target_threshold: float = 0.002,
         sequence_length: int = 30,
     ) -> tuple[np.ndarray, np.ndarray, list[str], pd.DataFrame]:
-        _, _, df = self.ml_model_service.prepare_features_and_target(
+        df = self.dataset_service.prepare_dataset(
             symbol=symbol,
             timeframe=timeframe,
             lag_periods=lag_periods,
             future_steps=future_steps,
-            model_type="logistic_regression",
             target_threshold=target_threshold,
         )
 
@@ -158,6 +157,15 @@ class LSTMModelService:
         aligned_df = df.iloc[sequence_length:].reset_index(drop=True)
         return X, y, feature_columns, aligned_df
 
+    @staticmethod
+    def _train_end_ts(df: pd.DataFrame, train_samples: int, future_steps: int) -> int:
+        """Last candle whose data, including the label, was seen in training.
+
+        Sample k targets row k + sequence_length of the aligned frame, and its
+        label looks future_steps candles further ahead."""
+        index = min(train_samples - 1 + future_steps, len(df) - 1)
+        return int(df["timestamp"].iloc[index])
+
     def train_lstm(
         self,
         symbol: str,
@@ -173,7 +181,7 @@ class LSTMModelService:
         num_layers: int = 2,
         dropout: float = 0.2,
     ) -> LSTMTrainingArtifacts:
-        X, y, feature_columns, _ = self.prepare_sequence_dataset(
+        X, y, feature_columns, aligned_df = self.prepare_sequence_dataset(
             symbol=symbol,
             timeframe=timeframe,
             lag_periods=lag_periods,
@@ -251,6 +259,9 @@ class LSTMModelService:
                 "dropout": dropout,
                 "sequence_length": sequence_length,
                 "feature_columns": feature_columns,
+                "train_end_ts": self._train_end_ts(
+                    aligned_df, len(X_train), future_steps
+                ),
             },
             model_path,
         )
@@ -302,13 +313,10 @@ class LSTMModelService:
         sequence_length = int(checkpoint["sequence_length"])
         feature_columns = list(checkpoint["feature_columns"])
 
-        _, _, df = self.ml_model_service.prepare_features_and_target(
+        df = self.dataset_service.prepare_inference_frame(
             symbol=symbol,
             timeframe=timeframe,
             lag_periods=lag_periods,
-            future_steps=future_steps,
-            model_type="logistic_regression",
-            target_threshold=target_threshold,
         )
 
         if len(df) < sequence_length:
@@ -377,12 +385,11 @@ class LSTMModelService:
         sequence_length = int(checkpoint["sequence_length"])
         feature_columns = list(checkpoint["feature_columns"])
 
-        _, _, df = self.ml_model_service.prepare_features_and_target(
+        df = self.dataset_service.prepare_dataset(
             symbol=symbol,
             timeframe=timeframe,
             lag_periods=lag_periods,
             future_steps=future_steps,
-            model_type="logistic_regression",
             target_threshold=target_threshold,
         )
 

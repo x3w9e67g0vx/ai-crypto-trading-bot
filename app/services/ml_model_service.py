@@ -21,18 +21,16 @@ from app.services.ml_dataset_service import MLDatasetService
 
 
 class MLModelService:
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: Session, model_dir: Path | None = None) -> None:
         self.db = db
         self.dataset_service = MLDatasetService(db)
 
-        self.model_dir = Path("artifacts/models")
+        self.model_dir = model_dir or Path("artifacts/models")
         self.model_dir.mkdir(parents=True, exist_ok=True)
 
-    def get_model_path(self, model_type: str) -> Path:
-        return self.model_dir / f"{model_type}_model.joblib"
-
-    def get_features_path(self, model_type: str) -> Path:
-        return self.model_dir / f"{model_type}_features.joblib"
+    def get_model_path(self, model_type: str, symbol: str, timeframe: str) -> Path:
+        safe_symbol = symbol.replace("/", "_")
+        return self.model_dir / f"{model_type}_{safe_symbol}_{timeframe}.joblib"
 
     def get_feature_columns(self, df: pd.DataFrame) -> list[str]:
         exclude_columns = {
@@ -133,11 +131,20 @@ class MLModelService:
             y_test, y_pred, output_dict=True, zero_division=0
         )
 
-        model_path = self.get_model_path(model_type)
-        features_path = self.get_features_path(model_type)
+        # Last candle whose data, including the label future_steps ahead,
+        # was seen in training; backtests start strictly after it.
+        train_end_index = min(len(X_train) - 1 + future_steps, len(df) - 1)
+        train_end_ts = int(df["timestamp"].iloc[train_end_index])
 
-        joblib.dump(model, model_path)
-        joblib.dump(feature_columns, features_path)
+        model_path = self.get_model_path(model_type, symbol, timeframe)
+        joblib.dump(
+            {
+                "model": model,
+                "feature_columns": feature_columns,
+                "train_end_ts": train_end_ts,
+            },
+            model_path,
+        )
 
         training_run = ModelTrainingRun(
             model_type=model_name,
@@ -177,6 +184,7 @@ class MLModelService:
             },
             "classification_report": report,
             "model_path": str(model_path),
+            "train_end_ts": train_end_ts,
             "training_run_id": training_run.id,
         }
 
@@ -201,19 +209,21 @@ class MLModelService:
             target_threshold=target_threshold,
         )
 
-    def load_model(self, model_type: str = "logistic_regression"):
-        model_path = self.get_model_path(model_type)
+    def load_artifact(
+        self, model_type: str, symbol: str, timeframe: str
+    ) -> dict[str, object]:
+        model_path = self.get_model_path(model_type, symbol, timeframe)
         if not model_path.exists():
             raise FileNotFoundError(f"Model file not found: {model_path}")
         return joblib.load(model_path)
 
+    def load_model(self, model_type: str, symbol: str, timeframe: str):
+        return self.load_artifact(model_type, symbol, timeframe)["model"]
+
     def load_feature_columns(
-        self, model_type: str = "logistic_regression"
+        self, model_type: str, symbol: str, timeframe: str
     ) -> list[str]:
-        features_path = self.get_features_path(model_type)
-        if not features_path.exists():
-            raise FileNotFoundError(f"Feature list file not found: {features_path}")
-        return joblib.load(features_path)
+        return list(self.load_artifact(model_type, symbol, timeframe)["feature_columns"])
 
     def prepare_features_and_target(
         self,
@@ -236,7 +246,7 @@ class MLModelService:
         if df.empty:
             raise ValueError("Dataset is empty")
 
-        feature_columns = self.load_feature_columns(model_type=model_type)
+        feature_columns = self.load_feature_columns(model_type, symbol, timeframe)
         X = df[feature_columns]
         y = df["target"]
 
@@ -251,19 +261,16 @@ class MLModelService:
         model_type: str = "logistic_regression",
         target_threshold: float = 0.002,
     ) -> tuple[pd.DataFrame, dict[str, object]]:
-        df = self.dataset_service.prepare_dataset(
+        df = self.dataset_service.prepare_inference_frame(
             symbol=symbol,
             timeframe=timeframe,
             lag_periods=lag_periods,
-            future_steps=future_steps,
-            target_threshold=target_threshold,
-            dropna=True,
         )
 
         if df.empty:
             raise ValueError("Dataset is empty")
 
-        feature_columns = self.load_feature_columns(model_type=model_type)
+        feature_columns = self.load_feature_columns(model_type, symbol, timeframe)
 
         latest_row = df.iloc[-1].copy()
         X_latest = df[feature_columns].tail(1)
@@ -298,7 +305,7 @@ class MLModelService:
         model_type: str = "logistic_regression",
         target_threshold: float = 0.002,
     ) -> dict[str, object]:
-        model = self.load_model(model_type=model_type)
+        model = self.load_model(model_type, symbol, timeframe)
 
         X_latest, meta = self.get_latest_features(
             symbol=symbol,

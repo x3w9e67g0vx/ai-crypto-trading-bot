@@ -139,7 +139,7 @@ class StrategyService:
                 model_type=model_type,
             )
 
-        model = self.ml_model_service.load_model(model_type=model_type)
+        model = self.ml_model_service.load_model(model_type, symbol, timeframe)
 
         X, _, df = self.ml_model_service.prepare_features_and_target(
             symbol=symbol,
