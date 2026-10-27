@@ -53,3 +53,44 @@ def test_parse_rejects_bad_candles():
     for over in ({"h": "1.5"}, {"l": "1.5"}, {"v": "-1"}, {"c": "nan"}, {"l": "0"}, {"t": "x"}, {"x": "true"}):
         assert parse_message(kline(**over), 0) is None
     assert parse_message({"stream": "btcusdt@kline_1m", "data": {"s": "BTCUSDT"}}, 0) is None
+
+
+def test_failed_candle_callback_keeps_watermark():
+    import asyncio
+
+    import aiohttp
+    import pytest
+
+    from app.game.price_feed import BinanceFeed
+    from app.game.quotes import QuoteBook
+
+    class Msg:
+        type = aiohttp.WSMsgType.TEXT
+
+        def __init__(self, data):
+            self.data = data
+
+    class FakeWS:
+        def __init__(self, frames):
+            self.frames = frames
+
+        def __aiter__(self):
+            return self._gen()
+
+        async def _gen(self):
+            for frame in self.frames:
+                yield Msg(frame)
+
+    def candle(t):
+        k = {"t": t, "o": "1", "h": "3", "l": "0.5", "c": "2", "v": "10", "x": True}
+        import json
+        return json.dumps({"stream": "btcusdt@kline_1m", "data": {"e": "kline", "s": "BTCUSDT", "k": k}})
+
+    async def on_candle(event):
+        if event.open_time == 120_000:
+            raise RuntimeError("settlement failed")
+
+    feed = BinanceFeed(QuoteBook(), symbols=["BTC/USDT"], on_candle=on_candle)
+    with pytest.raises(RuntimeError):
+        asyncio.run(feed._consume(FakeWS(["not json", candle(60_000), candle(120_000)])))
+    assert feed.last_candle_ms == 60_000

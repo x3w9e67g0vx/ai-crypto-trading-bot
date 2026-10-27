@@ -161,6 +161,8 @@ class BinanceFeed:
             if isinstance(event, Quote):
                 self.quotes.update(event)
             elif isinstance(event, ClosedCandle):
-                self.last_candle_ms = event.open_time
                 if self.on_candle is not None:
                     await self.on_candle(event)
+                # Advance only after the candle was handled, so a failed callback
+                # leaves the gap to be backfilled via on_reconnect.
+                self.last_candle_ms = event.open_time
