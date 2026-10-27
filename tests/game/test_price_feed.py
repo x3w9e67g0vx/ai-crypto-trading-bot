@@ -31,3 +31,25 @@ def test_backoff_doubles_up_to_30s():
     assert next_backoff(1) == 2
     assert next_backoff(16) == 30
     assert next_backoff(30) == 30
+
+
+def book(b, a):
+    return {"stream": "btcusdt@bookTicker", "data": {"s": "BTCUSDT", "b": b, "a": a}}
+
+
+def test_parse_rejects_bad_quotes():
+    for b, a in (("nan", "1"), ("1", "inf"), ("0", "1"), ("-1", "1"), ("2", "1"), ("x", "1"), (None, "1")):
+        assert parse_message(book(b, a), 0) is None
+    assert parse_message({"stream": "btcusdt@bookTicker", "data": {"s": "BTCUSDT"}}, 0) is None
+
+
+def test_parse_rejects_bad_candles():
+    def kline(**over):
+        k = {"t": 0, "o": "1", "h": "3", "l": "0.5", "c": "2", "v": "10", "x": True}
+        k.update(over)
+        return {"stream": "btcusdt@kline_1m", "data": {"e": "kline", "s": "BTCUSDT", "k": k}}
+
+    assert parse_message(kline(), 0) is not None
+    for over in ({"h": "1.5"}, {"l": "1.5"}, {"v": "-1"}, {"c": "nan"}, {"l": "0"}, {"t": "x"}, {"x": "true"}):
+        assert parse_message(kline(**over), 0) is None
+    assert parse_message({"stream": "btcusdt@kline_1m", "data": {"s": "BTCUSDT"}}, 0) is None

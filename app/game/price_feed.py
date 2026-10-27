@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import time
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
@@ -39,31 +40,57 @@ def stream_url(symbols: Iterable[str]) -> str:
     return BINANCE_STREAM_BASE + "/".join(streams)
 
 
+def _valid_quote(bid: float, ask: float) -> bool:
+    return math.isfinite(bid) and math.isfinite(ask) and 0 < bid <= ask
+
+
+def _valid_candle(o: float, h: float, l: float, c: float, v: float) -> bool:
+    return (
+        all(math.isfinite(x) for x in (o, h, l, c, v))
+        and 0 < l <= min(o, c)
+        and h >= max(o, c)
+        and v >= 0
+    )
+
+
 def parse_message(raw: dict, now_ms: int) -> Quote | ClosedCandle | None:
-    """Turn one combined-stream message into a quote or a closed 1m candle."""
+    """Turn one combined-stream message into a quote or a closed 1m candle.
+
+    Anything malformed or implausible is dropped: these prices settle virtual money.
+    """
+    stream = raw.get("stream")
     data = raw.get("data")
-    if not isinstance(data, dict):
+    if not isinstance(stream, str) or not isinstance(data, dict):
         return None
     symbol = _SYMBOLS_BY_STREAM_NAME.get(data.get("s", ""))
     if symbol is None:
         return None
 
-    if data.get("e") == "kline":
-        kline = data["k"]
-        if not kline.get("x"):
-            return None
-        return ClosedCandle(
-            symbol=symbol,
-            open_time=int(kline["t"]),
-            open=float(kline["o"]),
-            high=float(kline["h"]),
-            low=float(kline["l"]),
-            close=float(kline["c"]),
-            volume=float(kline["v"]),
-        )
-    if "b" in data and "a" in data:
-        # bookTicker carries no event time; stamp it on receipt.
-        return Quote(symbol=symbol, bid=float(data["b"]), ask=float(data["a"]), ts=now_ms)
+    try:
+        if stream.endswith("@kline_1m"):
+            kline = data["k"]
+            if kline.get("x") is not True:
+                return None
+            candle = ClosedCandle(
+                symbol=symbol,
+                open_time=int(kline["t"]),
+                open=float(kline["o"]),
+                high=float(kline["h"]),
+                low=float(kline["l"]),
+                close=float(kline["c"]),
+                volume=float(kline["v"]),
+            )
+            if not _valid_candle(candle.open, candle.high, candle.low, candle.close, candle.volume):
+                return None
+            return candle
+        if stream.endswith("@bookTicker"):
+            bid, ask = float(data["b"]), float(data["a"])
+            if not _valid_quote(bid, ask):
+                return None
+            # bookTicker carries no event time; stamp it on receipt.
+            return Quote(symbol=symbol, bid=bid, ask=ask, ts=now_ms)
+    except (KeyError, TypeError, ValueError):
+        return None
     return None
 
 
@@ -108,8 +135,10 @@ class BinanceFeed:
                             await self.on_reconnect(self.last_candle_ms)
                         connected_before = True
                         await self._consume(ws)
-                except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
-                    logger.warning("binance stream error: %s", exc)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logger.exception("binance stream error, reconnecting")
                 if self._stopped:
                     break
                 await asyncio.sleep(backoff)
@@ -123,7 +152,12 @@ class BinanceFeed:
                 if message.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
                     return
                 continue
-            event = parse_message(json.loads(message.data), _now_ms())
+            try:
+                raw = json.loads(message.data)
+            except ValueError:
+                logger.warning("binance stream: dropped non-JSON frame")
+                continue
+            event = parse_message(raw, _now_ms()) if isinstance(raw, dict) else None
             if isinstance(event, Quote):
                 self.quotes.update(event)
             elif isinstance(event, ClosedCandle):
