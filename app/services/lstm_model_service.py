@@ -379,11 +379,21 @@ class LSTMModelService:
         min_trade_usdt: float = 10.0,
         min_position_usdt: float = 5.0,
         max_position_fraction: float = 0.3,
+        out_of_sample: bool = True,
     ) -> dict[str, object]:
         model, scaler, checkpoint = self.load_lstm_artifacts(symbol, timeframe)
 
         sequence_length = int(checkpoint["sequence_length"])
         feature_columns = list(checkpoint["feature_columns"])
+
+        train_end_ts = None
+        if out_of_sample:
+            train_end_ts = checkpoint.get("train_end_ts")
+            if train_end_ts is None:
+                raise ValueError(
+                    "LSTM checkpoint has no train_end_ts; retrain it to run "
+                    "an out-of-sample backtest"
+                )
 
         df = self.dataset_service.prepare_dataset(
             symbol=symbol,
@@ -417,8 +427,14 @@ class LSTMModelService:
         losing_trade_pnls = []
 
         aligned_rows = 0
+        oos_start_ts = None
 
         for i in range(sequence_length, len(df)):
+            if train_end_ts is not None and int(df.iloc[i]["timestamp"]) <= train_end_ts:
+                continue
+            if oos_start_ts is None:
+                oos_start_ts = int(df.iloc[i]["timestamp"])
+
             window = df.iloc[i - sequence_length : i].copy()
             row = df.iloc[i]
 
@@ -611,6 +627,9 @@ class LSTMModelService:
             equity_curve.append(portfolio_value)
             aligned_rows += 1
 
+        if aligned_rows == 0:
+            return {"status": "error", "message": "No out-of-sample rows"}
+
         final_price = float(df.iloc[-1]["close"])
         final_position_value = asset_balance * final_price
 
@@ -658,6 +677,8 @@ class LSTMModelService:
             "symbol": symbol,
             "timeframe": timeframe,
             "rows": aligned_rows,
+            "out_of_sample": out_of_sample,
+            "oos_start_ts": oos_start_ts,
             "initial_usdt": initial_usdt,
             "final_balance": final_balance,
             "total_return_pct": total_return_pct,

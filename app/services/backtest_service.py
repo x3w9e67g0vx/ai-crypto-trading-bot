@@ -34,8 +34,10 @@ class BacktestService:
         min_trade_usdt: float = 10.0,
         min_position_usdt: float = 5.0,
         max_position_fraction: float = 0.3,
+        out_of_sample: bool = True,
     ) -> dict[str, object]:
-        model = self.ml_model_service.load_model(model_type=model_type)
+        artifact = self.ml_model_service.load_artifact(model_type, symbol, timeframe)
+        model = artifact["model"]
         X, y, df = self.ml_model_service.prepare_features_and_target(
             symbol=symbol,
             timeframe=timeframe,
@@ -46,6 +48,14 @@ class BacktestService:
         )
 
         probabilities = model.predict_proba(X)
+
+        if out_of_sample:
+            # Only candles the model never saw, labels included.
+            mask = (df["timestamp"] > artifact["train_end_ts"]).to_numpy()
+            df = df[mask].reset_index(drop=True)
+            probabilities = probabilities[mask]
+            if df.empty:
+                return {"status": "error", "message": "No out-of-sample rows"}
 
         usdt_balance = initial_usdt
         asset_balance = 0.0
@@ -296,6 +306,9 @@ class BacktestService:
             "model_type": model_type,
             "symbol": symbol,
             "timeframe": timeframe,
+            "rows": len(df),
+            "out_of_sample": out_of_sample,
+            "oos_start_ts": int(df.iloc[0]["timestamp"]),
             "rows": len(df),
             "initial_usdt": initial_usdt,
             "final_balance": final_balance,
