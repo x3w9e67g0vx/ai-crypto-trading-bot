@@ -203,6 +203,72 @@
 
 ---
 
+## Фаза 2 — ИИ-персонажи (детально)
+
+**Решения строителя (не из спеки):**
+- Артефакт RF/LogReg — один файл на модель×символ×таймфрейм: `artifacts/models/{model_type}_{BTC_USDT}_{5m}.joblib` = `{"model", "feature_columns", "train_end_ts"}`. Старые глобальные `*_model.joblib`/`*_features.joblib` больше не читаются (удаляются из репозитория).
+- `train_end_ts` = timestamp последней свечи, чья информация (включая метку на `future_steps` вперёд) попала в обучение. Out-of-sample = строки с `timestamp > train_end_ts`. LSTM хранит то же поле в чекпойнте.
+- Живое предсказание строится по последней **закрытой** свече: раньше `dropna()` выбрасывал последние `future_steps` строк без метки, и «последний» сигнал опаздывал на 15 минут.
+- Трендовый фильтр (LSTM, RF) применяется к «взгляду» персонажа целиком, как в старом бэктесте: бычий = `p ≥ buy` и `ema_fast > ema_slow`; медвежий = `p ≤ sell` и `ema_fast < ema_slow`; без EMA при включённом фильтре — нейтрально.
+- Действие: бычий → закрыть шорт, иначе открыть лонг (если позиции нет); медвежий — зеркально; нейтральный — держать. Пороги включительно.
+- Размер = `min(fraction·V, 0.5·V, cash/(1+fee))`, `V = portfolio_value(allow_stale=True)`; ордер < 10 USDT не ставится. SL/TP — проценты от цены входа (ask для лонга, bid для шорта).
+- ИИ играет в обоих типах сезона (спринт и неделя), по портфелю на каждый; закрывает тоже через `close_position(is_user=True)` — тот же дневной лимит.
+- Каждое мнение ИИ сохраняется (`AiDecision`): нужно для идемпотентности, разборов сделок (фаза 5) и постов (фаза 6).
+- Задержка видимости для не-Pro: показывается состояние позиций ИИ на момент `now − 1 ч` (позиция, закрытая 20 мин назад, видна как открытая; открытая 20 мин назад — не видна).
+- Вызов на каждой 5m-свече — фаза 7 (планировщик); здесь — точка входа `run_ai_turn` + провайдер сигналов + скрипт обучения.
+
+**Review Focus фазы 2:**
+1. **Свечи в БД отстали** (ингест упал) — ожидание: ИИ не торгует по старой свече. Тест: `test_signal_for_other_candle_ignored` (Task 12), `test_load_signals_drops_stale_candle` (Task 13).
+2. **Один и тот же тик свечи пришёл дважды** (ретрай планировщика) — ожидание: вторая сделка не открывается. Тест: `test_run_ai_turn_idempotent` (Task 12).
+3. **Нет файла модели у одного персонажа** — ожидание: остальные торгуют. Тест: `test_missing_model_skips_only_that_persona` (Task 13).
+4. **Игровое правило отклонило ордер ИИ** (лимит, протухшая цена) — ожидание: ход продолжается для остальных, без исключения. Тест: `test_rejected_order_does_not_abort_turn` (Task 12).
+5. **Бесплатный игрок смотрит позиции ИИ** — ожидание: состояние часовой давности, Pro — текущее. Тест: `test_free_viewer_sees_state_one_hour_ago` (Task 14).
+
+### Task 9: Модель на символ + живые фичи
+**Files:** Modify `app/services/ml_model_service.py`, `app/services/ml_dataset_service.py`, `app/services/lstm_model_service.py`, `app/services/strategy_service.py`; Create `tests/ml/__init__.py`, `tests/ml/conftest.py` (фикстура `candles_db`: SQLite + 400 синтетических 5m-свечей с индикаторами для BTC/USDT и ETH/USDT, фикстура `model_dir` → `tmp_path`); Test `tests/ml/test_model_artifacts.py`
+**Interfaces:** Produces:
+- `MLDatasetService.prepare_inference_frame(symbol, timeframe, lag_periods=3) -> DataFrame` — фичи без метки, строки с NaN только в фичах выброшены.
+- `MLModelService(db, model_dir: Path | None = None)`; `get_model_path(model_type, symbol, timeframe) -> Path`; `load_artifact(model_type, symbol, timeframe) -> dict` (`FileNotFoundError` если нет); `load_model(model_type, symbol, timeframe)`; `load_feature_columns(model_type, symbol, timeframe)`; `train_model` возвращает ещё `train_end_ts`.
+- `LSTMModelService(db, model_dir: Path | None = None)`; чекпойнт содержит `train_end_ts`; `predict_latest_probability` использует inference frame.
+- [ ] **Step 1: Тесты** `test_models_saved_per_symbol` (LR для BTC и ETH → два разных файла, оба грузятся, второй не перезаписал первый), `test_artifact_has_train_end_ts` (= timestamp строки `split−1+future_steps`), `test_predict_latest_uses_last_closed_candle` (timestamp == последней свече; для LR и LSTM), `test_missing_model_raises_file_not_found`.
+- [ ] **Step 2–4:** FAIL → реализовать → PASS; весь `pytest` зелёный.
+- [ ] **Step 5:** Commit `feat(ml): save models per symbol and predict on last closed candle`.
+
+### Task 10: Out-of-sample бэктест
+**Files:** Modify `app/services/backtest_service.py`, `app/services/lstm_model_service.py`; Test `tests/ml/test_backtest_oos.py`
+**Interfaces:** `run_backtest(..., out_of_sample: bool = True)` и `run_lstm_backtest(..., out_of_sample: bool = True)` — при `True` торгуют только на строках `timestamp > train_end_ts`; в результате `out_of_sample`, `oos_start_ts`, `rows`; нет OOS-строк → `{"status": "error", "message": "No out-of-sample rows"}`.
+- [ ] **Step 1: Тесты** `test_backtest_default_is_out_of_sample` (все `preview_trades.timestamp > train_end_ts`, `rows` ≈ 20% датасета), `test_in_sample_opt_out` (`out_of_sample=False` → `rows` = весь датасет), `test_lstm_backtest_default_is_out_of_sample`.
+- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `fix(backtest): evaluate on out-of-sample rows by default`.
+
+### Task 11: Персонажи
+**Files:** Create `app/game/ai_personas.py`; Modify `app/game/config.py` (`AI_SYMBOLS = STARTER_SYMBOLS`, `AI_TIMEFRAME = "5m"`, `AI_MIN_ORDER_USDT = 10.0`, `AI_VISIBILITY_DELAY_MS = 3_600_000`); Test `tests/game/test_ai_personas.py`
+**Interfaces:** Produces:
+- `@dataclass(frozen=True) Persona(key, nickname, buy_threshold, sell_threshold, position_fraction, stop_loss_pct, take_profit_pct, use_trend_filter)`; `PERSONAS: tuple[Persona, ...]` — `lstm` «LSTM» 0.55/0.45/0.40/0.03/0.06/True; `random_forest` «Random Forest» 0.65/0.35/0.15/0.015/0.03/True; `logistic_regression` «LogReg» 0.55/0.45/0.25/0.03/0.06/False (SL/TP новичка спека не задаёт — как у LSTM).
+- `@dataclass(frozen=True) Signal(candle_ts: int, probability_up: float, ema_fast: float | None, ema_slow: float | None)`.
+- `view(persona, signal) -> "bullish" | "bearish" | "neutral"`; `decide(view, open_side: str | None) -> "open_long" | "open_short" | "close" | "hold"`.
+- `order_size(persona, portfolio, quotes, now_ms) -> float`; `stop_prices(persona, side, bid, ask) -> tuple[float, float]`.
+- `ensure_ai_players(db, now_ms) -> dict[str, Player]` — идемпотентно по `ai_key`.
+- [ ] **Step 1: Тесты** `test_personas_match_spec`, `test_view_thresholds_inclusive`, `test_trend_filter_blocks_counter_trend` (RF при p=0.7 и ema_fast<ema_slow → neutral; LogReg → bullish), `test_decide_matrix` (6 комбинаций), `test_order_size_caps_by_cash_and_pair_limit`, `test_stop_prices_long_and_short`, `test_ensure_ai_players_idempotent`.
+- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(game): add ai personas`.
+
+### Task 12: Ход ИИ
+**Files:** Create `app/game/ai_trader.py`; Modify `app/game/models.py` (`AiDecision`: `player_id` FK, `symbol`, `candle_ts` BigInteger, `probability_up`, `view`, `created_at`; unique `(player_id, symbol, candle_ts)`); Test `tests/game/test_ai_trader.py`
+**Interfaces:** `run_ai_turn(db, symbol, candle_ts, signals: dict[str, Signal], quotes, now_ms) -> list[AiDecision]` — для каждой персоны с сигналом этой свечи: записать `AiDecision`, затем в текущих спринт- и недельном сезоне (`ensure_current_season` + `join_season`) выполнить `decide` через `open_position`/`close_position` (`is_user=True`), `GameError` логируется и не прерывает ход. `symbol ∉ AI_SYMBOLS` → `UnknownSymbol`.
+- [ ] **Step 1: Тесты** `test_bullish_opens_long_in_both_seasons` (SL/TP проставлены), `test_bearish_closes_long_then_opens_short_next_candle`, `test_run_ai_turn_idempotent` (RF2), `test_signal_for_other_candle_ignored` (RF1), `test_rejected_order_does_not_abort_turn` (RF4: у LSTM исчерпан дневной лимит → RF всё равно открыл), `test_ai_not_in_league_groups`.
+- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(game): run ai personas on closed candles`.
+
+### Task 13: Провайдер сигналов + скрипт обучения
+**Files:** Create `app/game/ai_signals.py`, `scripts/train_ai_models.py`; Test `tests/ml/test_ai_signals.py`
+**Interfaces:** `load_signals(db, symbol, candle_ts, *, timeframe=AI_TIMEFRAME, model_dir=None) -> dict[str, Signal]` — LR/RF через `MLModelService.predict_latest`, LSTM через `predict_latest_probability`; `FileNotFoundError`/`ValueError` одной модели → лог и пропуск; сигнал с `timestamp != candle_ts` выбрасывается. Скрипт: для `AI_SYMBOLS` обучает LR, RF (`future_steps=3`) и LSTM, печатает метрики и OOS-бэктест с параметрами персонажа.
+- [ ] **Step 1: Тесты** `test_load_signals_returns_all_three`, `test_missing_model_skips_only_that_persona` (RF3), `test_load_signals_drops_stale_candle` (RF1).
+- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(game): load ai signals from trained models`.
+
+### Task 14: Задержка видимости
+**Files:** Create `app/game/ai_view.py`; Test `tests/game/test_ai_view.py`
+**Interfaces:** `is_pro(player, now_ms) -> bool` (`is_pro_until` > now); `ai_positions_view(db, viewer: Player, ai_portfolio: Portfolio, now_ms) -> list[Position]` — Pro: открытые сейчас; иначе открытые на момент `now − AI_VISIBILITY_DELAY_MS`.
+- [ ] **Step 1: Тесты** `test_free_viewer_sees_state_one_hour_ago` (RF5), `test_pro_viewer_sees_live`, `test_expired_pro_is_free`.
+- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(game): delay ai positions for free players`.
+
 ## Фазы 2–7 — дорожная карта (детальный план на каждую — перед стартом фазы)
 
 **Фаза 2 — ИИ-персонажи.** `app/game/ai_personas.py`: три `Player(is_ai=True)` (`lstm` агрессивный 0.55/0.45, 40%, SL 3%/TP 6%; `random_forest` осторожный 0.65/0.35, 15%, SL 1.5%/TP 3%; `logistic_regression` новичок 0.55/0.45, 25%, без трендового фильтра); решение на закрытии каждой 5m-свечи BTC/ETH/SOL через `open_position(..., is_user=True)` — те же лимиты. Исправить сохранение RF/LogReg: отдельный файл на символ. Дефолтный бэктест → out-of-sample. Задержка видимости позиций ИИ 1 ч для не-Pro.
