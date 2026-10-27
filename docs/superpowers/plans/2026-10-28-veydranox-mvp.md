@@ -1,0 +1,218 @@
+# VEYDRANOX MVP Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Превратить проект в обучающую игру «обыграй ИИ»: виртуальные $10 000 на сезон, торговля по реальным ценам Binance, сезоны, лиги, ИИ-персонажи, уроки, автоканал.
+
+**Architecture:** Новый пакет `app/game/` — игровое ядро без зависимостей от бота/API: чистые функции + SQLAlchemy-модели на общем `Base`. Цены приходят из Binance WebSocket в in-memory `QuoteBook`, движок исполняет рыночные ордера по bid/ask. API (FastAPI), бот (aiogram), планировщик и канал — тонкие слои поверх ядра (фазы 3–7).
+
+**Tech Stack:** Python 3.14, SQLAlchemy 2.0, FastAPI, aiogram 3, aiohttp (WebSocket-клиент), ccxt (REST-бэкфилл), pytest, PostgreSQL 15 (тесты — SQLite in-memory), Docker Compose.
+
+**Spec:** `docs/superpowers/specs/2026-10-28-veydranox-design.md`
+
+## Global Constraints
+
+- Стартовый баланс портфеля: 10 000 USDT; каждый тип сезона — отдельный портфель.
+- Только рыночные ордера: покупка по **ask**, продажа по **bid**; комиссия 0.1% с каждой сделки.
+- Лонг и шорт только 1x, плеча нет нигде.
+- Максимум 50% стоимости портфеля в одной паре; максимум 20 сделок в день (UTC) на портфель.
+- Цена старше 30 секунд → торговля по паре на паузе; SL/TP и закрытие сезона исполняются по первой свежей цене.
+- Место в рейтинге засчитывается при ≥ 5 сделках; место = % доходности портфеля за сезон.
+- Стоимость портфеля: лонги по bid, шорты по ask.
+- Спринт: 24 ч, старт 00:00 UTC. Неделя: понедельник 00:00 UTC → следующий понедельник 00:00 UTC (решение строителя).
+- Лиги: Бронза → Серебро → Золото → Платина → Алмаз; группа 30; топ-5 вверх, последние 5 вниз; в группе < 30 — 20% (вниз-округление, минимум 1 при ≥ 5 квалифицированных).
+- ИИ-персонажи — «призраки»: в таблице есть, места для повышения/понижения не занимают.
+- Призовые бейджи — только аккаунтам старше 3 дней и с ≥ 5 сделками. Призы — только косметика.
+- Время в БД — `BigInteger` миллисекунды UTC (как в существующей таблице `candles`).
+- Тексты интерфейса RU + EN через `app/i18n/strings.py`; дисклеймер «образовательная игра, не инвестиционная рекомендация, деньги виртуальные».
+
+## Review Focus
+
+1. **Шорт при росте цены > 2x** — убыток больше зарезервированной суммы; стоимость портфеля может уйти ниже нуля. Ожидание: значение считается честно (без падения/исключения), рейтинг сортирует корректно. Тест: `test_short_loss_beyond_reserve` в Task 4.
+2. **Ордер, который сам по себе нарушает лимит 50%** (в том числе после комиссии) — ожидание: отказ `PairLimitExceeded`, баланс не меняется. Тест: `test_open_rejects_over_half_portfolio` в Task 4.
+3. **SL/TP при протухшей цене** — ожидание: не срабатывают по старой цене; срабатывают на первой свежей. Тест: `test_stops_skip_stale_quotes` в Task 4.
+4. **Закрытие сезона при недоступной бирже** — ожидание: сезон остаётся в `closing`, позиции закрываются при следующем вызове со свежей ценой, итоги не подводятся раньше. Тест: `test_finalize_waits_for_fresh_quotes` в Task 5.
+5. **Маленькая группа лиги (< 5 квалифицированных)** — ожидание: никто не двигается из-за результата, но не игравшие всю неделю понижаются. Тест: `test_small_group_no_movement` в Task 7.
+
+---
+
+## Фаза 1 — Игровое ядро (этот план, детально)
+
+### File Structure
+
+| Файл | Ответственность |
+|---|---|
+| `app/game/config.py` | Константы игры и список пар |
+| `app/game/errors.py` | Иерархия игровых ошибок |
+| `app/game/models.py` | ORM: Player, Season, Portfolio, Position, Fill, PortfolioSnapshot, LeagueGroup, LeagueMembership, Badge |
+| `app/game/quotes.py` | `Quote`, `QuoteBook` — актуальные bid/ask и свежесть |
+| `app/game/trading.py` | Открытие/закрытие позиций, лимиты, SL/TP, оценка портфеля |
+| `app/game/seasons.py` | Границы сезонов, создание, вход, финализация |
+| `app/game/leaderboard.py` | Рейтинг, win rate, просадка, бейджи |
+| `app/game/leagues.py` | Распределение по группам, повышение/понижение |
+| `app/game/price_feed.py` | Binance WS: парсинг `bookTicker`/`kline_1m`, реконнект |
+| `tests/game/conftest.py` | SQLite in-memory сессия, фабрики |
+
+Старые таблицы и сервисы пока не трогаем — их удаление идёт вместе с переписыванием API/бота (фазы 3–4), чтобы ветка оставалась рабочей.
+
+### Task 1: Тестовая инфраструктура, конфиг, ошибки
+
+**Files:**
+- Create: `app/game/__init__.py`, `app/game/config.py`, `app/game/errors.py`, `tests/__init__.py`, `tests/game/__init__.py`, `tests/game/conftest.py`, `pytest.ini`, `requirements-dev.txt`
+- Test: `tests/game/test_config.py`
+
+**Interfaces:**
+- Produces: `app.game.config`: `STARTING_BALANCE = 10_000.0`, `FEE_RATE = 0.001`, `MAX_PAIR_SHARE = 0.5`, `MAX_TRADES_PER_DAY = 20`, `MIN_QUALIFYING_TRADES = 5`, `STALE_AFTER_MS = 30_000`, `LEAGUE_GROUP_SIZE = 30`, `LEAGUE_FULL_MOVE = 5`, `LEAGUE_SMALL_SHARE = 0.2`, `PRIZE_MIN_ACCOUNT_AGE_DAYS = 3`, `LEAGUE_TIERS = ("bronze","silver","gold","platinum","diamond")`, `STARTER_SYMBOLS = ("BTC/USDT","ETH/USDT","SOL/USDT")`, `GAME_SYMBOLS` (20 пар, стартовые первыми), `SeasonKind` (`str` Enum: `SPRINT="sprint"`, `WEEK="week"`).
+- Produces: `app.game.errors`: `GameError(Exception)` с атрибутом `code: str`; наследники `StaleQuote`, `UnknownSymbol`, `InsufficientFunds`, `PairLimitExceeded`, `DailyTradeLimit`, `PositionExists`, `PositionNotFound`, `InvalidStops`, `SeasonClosed`, `InvalidAmount`.
+- Produces: фикстура `db` (Session на `sqlite://` с `Base.metadata.create_all`), фабрики `make_player(db, **kw)`, `make_season(db, kind, start_ms)`.
+
+- [ ] **Step 1: Тест** `test_game_symbols_are_unique_and_include_starters`: `len(GAME_SYMBOLS) == 20`, `len(set(GAME_SYMBOLS)) == 20`, `GAME_SYMBOLS[:3] == STARTER_SYMBOLS`, все оканчиваются на `/USDT`.
+- [ ] **Step 2:** `pytest tests/game/test_config.py -v` → FAIL (нет модуля).
+- [ ] **Step 3:** Реализовать `config.py`, `errors.py` (каждая ошибка задаёт `code` = snake_case имени), `pytest.ini` (`testpaths = tests`), `requirements-dev.txt` (`pytest`).
+- [ ] **Step 4:** Тест → PASS.
+- [ ] **Step 5:** Commit `feat(game): add game config, errors and test setup`.
+
+### Task 2: ORM-модели игры
+
+**Files:**
+- Create: `app/game/models.py`; Modify: `app/core/db/__init__.py` (импорт `app.game.models`, чтобы `create_all` создал таблицы)
+- Test: `tests/game/test_models.py`
+
+**Interfaces:**
+- Produces (все `id` — `Integer` PK, время — `BigInteger` ms):
+  - `Player`: `telegram_id` (BigInteger, unique, nullable — у ИИ нет), `nickname`, `language` (`"ru"`), `is_ai` (bool), `ai_key` (nullable, unique: `"lstm"|"random_forest"|"logistic_regression"`), `league_tier` (`"bronze"`), `xp` (0), `is_banned` (False), `is_pro_until` (nullable), `referred_by_id` (FK players, nullable), `created_at`.
+  - `Season`: `kind`, `starts_at`, `ends_at`, `status` (`"active"|"closing"|"finished"`), unique (`kind`, `starts_at`).
+  - `Portfolio`: `player_id`, `season_id`, `cash`, `trades_count` (0), `created_at`; unique (`player_id`, `season_id`); relationship `positions`.
+  - `Position`: `portfolio_id`, `symbol`, `side` (`"long"|"short"`), `qty`, `entry_price`, `reserved` (сумма, списанная с cash без комиссии), `stop_loss`/`take_profit` (nullable), `opened_at`, `closed_at` (nullable), `exit_price` (nullable), `pnl` (nullable, после всех комиссий), `close_reason` (nullable: `"manual"|"stop_loss"|"take_profit"|"season_end"`).
+  - `Fill`: `portfolio_id`, `position_id`, `symbol`, `side` (`"buy"|"sell"`), `qty`, `price`, `fee`, `is_user` (bool — учитывается в дневном лимите), `created_at`.
+  - `PortfolioSnapshot`: `portfolio_id`, `value`, `created_at`.
+  - `LeagueGroup`: `season_id`, `tier`, `number`; unique (`season_id`, `tier`, `number`).
+  - `LeagueMembership`: `group_id`, `portfolio_id` (unique), `joined_at`.
+  - `Badge`: `player_id`, `code` (`"sniper"|"iron_nerves"|"beat_ai"|"recruiter"`), `season_id` (nullable), `created_at`.
+
+- [ ] **Step 1: Тест** `test_portfolio_is_unique_per_player_and_season`: второй `Portfolio` с той же парой → `IntegrityError`. `test_ai_player_has_no_telegram_id`: `Player(is_ai=True, ai_key="lstm", telegram_id=None)` сохраняется.
+- [ ] **Step 2:** FAIL.
+- [ ] **Step 3:** Реализовать модели на `app.core.db.base.Base`.
+- [ ] **Step 4:** PASS.
+- [ ] **Step 5:** Commit `feat(game): add game ORM models`.
+
+### Task 3: QuoteBook
+
+**Files:** Create `app/game/quotes.py`; Test `tests/game/test_quotes.py`
+
+**Interfaces:**
+- Produces: `@dataclass(frozen=True) Quote(symbol: str, bid: float, ask: float, ts: int)`; `class QuoteBook`: `update(quote: Quote) -> None` (игнорирует более старый `ts`), `get(symbol: str, now_ms: int) -> Quote` (raise `StaleQuote` если нет или `now_ms - ts > STALE_AFTER_MS`), `is_fresh(symbol, now_ms) -> bool`, `last_update_ms() -> int | None`.
+
+- [ ] **Step 1: Тесты** `test_get_fresh_quote`, `test_stale_after_30_seconds` (ts=0, now=30_000 → ок; now=30_001 → `StaleQuote`), `test_missing_symbol_is_stale`, `test_older_update_ignored`.
+- [ ] **Step 2:** FAIL. **Step 3:** реализовать. **Step 4:** PASS.
+- [ ] **Step 5:** Commit `feat(game): add quote book with staleness`.
+
+### Task 4: Торговый движок
+
+**Files:** Create `app/game/trading.py`; Test `tests/game/test_trading.py`
+
+**Interfaces:**
+- Consumes: модели (Task 2), `QuoteBook` (Task 3), константы и ошибки (Task 1).
+- Produces:
+  - `portfolio_value(portfolio: Portfolio, quotes: QuoteBook, now_ms: int, *, allow_stale: bool = False) -> float` — `cash + Σ лонг qty·bid + Σ шорт (reserved + (entry − ask)·qty)`; при `allow_stale=True` берёт последнюю известную цену, иначе `StaleQuote`.
+  - `open_position(db, portfolio, symbol, side, amount_usdt, quotes, now_ms, *, stop_loss=None, take_profit=None, is_user=True) -> Position`
+  - `close_position(db, position, quotes, now_ms, *, reason="manual", is_user=True) -> Position`
+  - `check_stops(db, quotes, now_ms) -> list[Position]` — проходит по всем открытым позициям активных сезонов с SL/TP, закрывает сработавшие (`is_user=False`), пары с протухшей ценой пропускает.
+  - `user_trades_today(db, portfolio, now_ms) -> int` — число `Fill.is_user` за текущие UTC-сутки.
+- Правила (решения, которых нет в спеке):
+  - Одна открытая позиция на пару в портфеле; повторное открытие → `PositionExists`. Только полное закрытие.
+  - `amount_usdt` — номинал; `qty = amount / price` (ask для лонга, bid для шорта); комиссия `amount·FEE_RATE` сверху; нужно `cash ≥ amount + fee`, иначе `InsufficientFunds`; `amount ≤ 0` → `InvalidAmount`.
+  - Лимит пары: `amount ≤ MAX_PAIR_SHARE · portfolio_value(до сделки)`.
+  - Шорт: `reserved = amount`, `cash -= amount + fee`; закрытие: `cash += reserved + (entry − ask)·qty − exit_fee`, `exit_fee = qty·ask·FEE_RATE`. Лонг закрытие: `cash += qty·bid − qty·bid·FEE_RATE`.
+  - `pnl` позиции = итоговое изменение cash по позиции (обе комиссии включены).
+  - SL/TP валидация: лонг `sl < ask < tp`, шорт `tp < bid < sl` → иначе `InvalidStops`. Срабатывание: лонг по bid (`bid ≤ sl` / `bid ≥ tp`), шорт по ask (`ask ≥ sl` / `ask ≤ tp`).
+  - Дневной лимит считает только `is_user` сделки (открытие и закрытие), SL/TP и закрытие сезона не блокируются и в лимит не идут. `trades_count` растёт на каждой сделке (включая авто).
+  - Символ вне `GAME_SYMBOLS` → `UnknownSymbol`; сезон не `active` → `SeasonClosed` (для `reason="season_end"` разрешено при `closing`).
+
+- [ ] **Step 1: Тесты** (bid=99, ask=101, портфель 10 000):
+  - `test_open_long_charges_ask_plus_fee`: amount 1000 → `qty == 1000/101`, `cash == 10000 − 1000 − 1`.
+  - `test_close_long_at_bid`: потом bid=110 → `pnl == qty·110·0.999 − 1001` (approx), позиция закрыта, `close_reason == "manual"`.
+  - `test_open_short_reserves_and_profits_on_drop`: шорт 1000 по bid 99, затем ask=90 → `pnl ≈ (99−90)·qty − 1 − qty·90·0.001`.
+  - `test_short_loss_beyond_reserve` (Review Focus 1): шорт 5000, ask → 300 → `portfolio_value` < 5000 и является конечным float, закрытие не падает.
+  - `test_open_rejects_over_half_portfolio` (Review Focus 2): amount 5001 → `PairLimitExceeded`, cash без изменений; 5000 → ок.
+  - `test_daily_limit_20_user_trades`: 10 циклов open/close по одной паре → 21-й ордер `DailyTradeLimit`; на следующие UTC-сутки — снова можно.
+  - `test_stop_loss_triggers_on_bid` и `test_take_profit_short_triggers_on_ask`.
+  - `test_stops_skip_stale_quotes` (Review Focus 3): котировка протухла при цене за SL → `check_stops` ничего не закрывает; после свежей котировки — закрывает по ней.
+  - `test_trading_paused_when_stale`: `open_position` со старой котировкой → `StaleQuote`.
+  - `test_invalid_stops_rejected`, `test_position_exists`, `test_unknown_symbol`.
+- [ ] **Step 2:** FAIL. **Step 3:** реализовать. **Step 4:** PASS.
+- [ ] **Step 5:** Commit `feat(game): add market order engine with limits and stops`.
+
+### Task 5: Сезоны
+
+**Files:** Create `app/game/seasons.py`; Test `tests/game/test_seasons.py`
+
+**Interfaces:**
+- Consumes: Task 2–4.
+- Produces:
+  - `season_bounds(kind: SeasonKind, at_ms: int) -> tuple[int, int]` — спринт: UTC-сутки; неделя: пн 00:00 UTC → след. пн.
+  - `ensure_current_season(db, kind, now_ms) -> Season` — возвращает активный сезон текущего окна или создаёт.
+  - `join_season(db, player, season, now_ms) -> Portfolio` — идемпотентно; создаёт портфель с `STARTING_BALANCE`; для недели и не-ИИ вызывает `leagues.assign_group` (Task 7; до Task 7 — без лиг); забаненным → `SeasonClosed`.
+  - `finalize_season(db, season, quotes, now_ms) -> bool` — если `now_ms ≥ ends_at`: статус `closing`, закрывает все открытые позиции (`reason="season_end"`, `is_user=False`) там, где котировка свежая; если остались открытые — возвращает `False`; иначе статус `finished`, вызывает хуки итогов (бейджи — Task 6, лиги — Task 7) и возвращает `True`.
+- [ ] **Step 1: Тесты** `test_sprint_bounds_utc_day`, `test_week_bounds_monday` (2026-10-28 среда → 2026-10-26 00:00 … 2026-11-02 00:00 UTC), `test_ensure_current_season_idempotent`, `test_join_is_idempotent_and_funds_10000`, `test_finalize_closes_positions_at_market`, `test_finalize_waits_for_fresh_quotes` (Review Focus 4), `test_finalize_before_end_is_noop`.
+- [ ] **Step 2–4:** FAIL → реализовать → PASS.
+- [ ] **Step 5:** Commit `feat(game): add season lifecycle`.
+
+### Task 6: Рейтинг и бейджи
+
+**Files:** Create `app/game/leaderboard.py`; Test `tests/game/test_leaderboard.py`
+
+**Interfaces:**
+- Produces:
+  - `@dataclass Standing(portfolio_id: int, player_id: int, nickname: str, is_ai: bool, value: float, return_pct: float, trades: int, qualified: bool, rank: int | None)`.
+  - `standings(db, season, quotes, now_ms, *, portfolio_ids: Iterable[int] | None = None) -> list[Standing]` — сортировка: квалифицированные по `return_pct` desc, затем неквалифицированные; `rank` проставляется только квалифицированным людям (ИИ — `None`, но стоят в списке на своём месте по доходности). Использует `allow_stale=True`.
+  - `win_rate(db, portfolio) -> float | None` — доля закрытых позиций с `pnl > 0`; `None` если закрытых нет.
+  - `max_drawdown(db, portfolio) -> float` — по `PortfolioSnapshot` + стартовый баланс, доля 0..1.
+  - `take_snapshots(db, quotes, now_ms) -> int` — снимок стоимости всех портфелей активных сезонов.
+  - `award_season_badges(db, season, now_ms) -> list[Badge]` — «sniper» (макс. win rate) и «iron_nerves» (мин. просадка) среди людей с ≥ 5 сделками и аккаунтом ≥ 3 дней; «beat_ai» каждому такому человеку, у кого `return_pct` выше всех ИИ-портфелей сезона. Ничьи — бейдж всем лидерам.
+- [ ] **Step 1: Тесты** `test_unqualified_ranked_after_qualified`, `test_ai_not_ranked_but_listed`, `test_win_rate`, `test_max_drawdown_from_snapshots`, `test_badges_skip_young_accounts`, `test_beat_ai_badge`.
+- [ ] **Step 2–4:** FAIL → реализовать → PASS; подключить `award_season_badges` в `finalize_season`.
+- [ ] **Step 5:** Commit `feat(game): add leaderboard and season badges`.
+
+### Task 7: Лиги
+
+**Files:** Create `app/game/leagues.py`; Modify `app/game/seasons.py` (вызов в `join_season`/`finalize_season`); Test `tests/game/test_leagues.py`
+
+**Interfaces:**
+- Produces:
+  - `assign_group(db, portfolio, season, now_ms) -> LeagueGroup` — лига = `player.league_tier`; первая группа этой лиги с < 30 участниками; если все полные: в первые 24 ч сезона — новая группа, позже — наименее заполненная существующая; если групп нет — создать `number=1`.
+  - `movement_count(group_size: int, qualified: int) -> int` — `5` если `group_size ≥ 30`, иначе `floor(0.2·qualified)` при `qualified ≥ 5`, иначе `0`.
+  - `compute_movements(ranked_qualified: list[int], group_size: int) -> tuple[list[int], list[int]]` — (повышаются, понижаются) player_id.
+  - `apply_week_results(db, season, standings_by_group) -> None` — двигает `league_tier` на одну ступень (границы Бронза/Алмаз), игроки с `league_tier > bronze` без портфеля в сезоне или с 0 сделок понижаются на одну лигу; неквалифицированные (1–4 сделки) остаются.
+- [ ] **Step 1: Тесты** `test_movement_count` (30/30→5; 29 при 10 квалиф.→2; 12 при 5→1; 12 при 4→0), `test_full_group_top5_bottom5`, `test_small_group_no_movement` (Review Focus 5), `test_inactive_player_demoted`, `test_bronze_not_demoted_diamond_not_promoted`, `test_assign_fills_group_then_creates_new`, `test_midweek_join_goes_to_existing_group`.
+- [ ] **Step 2–4:** FAIL → реализовать → PASS.
+- [ ] **Step 5:** Commit `feat(game): add weekly leagues with promotion and demotion`.
+
+### Task 8: Binance price feed
+
+**Files:** Create `app/game/price_feed.py`; Test `tests/game/test_price_feed.py`
+
+**Interfaces:**
+- Produces:
+  - `stream_url(symbols: Iterable[str]) -> str` — `wss://stream.binance.com:9443/stream?streams=btcusdt@bookTicker/btcusdt@kline_1m/...`.
+  - `parse_message(raw: dict, now_ms: int) -> Quote | ClosedCandle | None` — `bookTicker` → `Quote(symbol="BTC/USDT", bid=float(b), ask=float(a), ts=now_ms)`; `kline` c `k.x == True` → `ClosedCandle(symbol, open_time, o, h, l, c, v)`; остальное → `None`.
+  - `class BinanceFeed(quotes: QuoteBook, symbols, on_candle: Callable[[ClosedCandle], Awaitable[None]] | None)`: `async run()` — aiohttp WS, экспоненциальный реконнект 1→30 с, после реконнекта вызывает `on_gap(last_candle_ms)` (бэкфилл через ccxt — в фазе 7).
+- [ ] **Step 1: Тесты** `test_stream_url`, `test_parse_book_ticker`, `test_parse_closed_kline_only`, `test_parse_unknown_returns_none`.
+- [ ] **Step 2–4:** FAIL → реализовать → PASS.
+- [ ] **Step 5:** Commit `feat(game): add binance websocket price feed`.
+
+---
+
+## Фазы 2–7 — дорожная карта (детальный план на каждую — перед стартом фазы)
+
+**Фаза 2 — ИИ-персонажи.** `app/game/ai_personas.py`: три `Player(is_ai=True)` (`lstm` агрессивный 0.55/0.45, 40%, SL 3%/TP 6%; `random_forest` осторожный 0.65/0.35, 15%, SL 1.5%/TP 3%; `logistic_regression` новичок 0.55/0.45, 25%, без трендового фильтра); решение на закрытии каждой 5m-свечи BTC/ETH/SOL через `open_position(..., is_user=True)` — те же лимиты. Исправить сохранение RF/LogReg: отдельный файл на символ. Дефолтный бэктест → out-of-sample. Задержка видимости позиций ИИ 1 ч для не-Pro.
+
+**Фаза 3 — API + Mini App.** Новый `app/api/game_routes.py` (авторизация initData из `app/miniapp/telegram_auth.py`): `/game/me`, `/game/quotes` (+ флаг «биржа недоступна»), `/game/orders`, `/game/positions`, `/game/leaderboard`, `/game/lessons`. Mini App: статический фронт, `lightweight-charts`, подпись «цены Binance», RU/EN, дисклеймер, ник при первом входе. Удаление старых эндпоинтов и таблиц, Alembic с чистой схемой + перенос `candles`.
+
+**Фаза 4 — Бот.** 6 команд (`/start` с дисклеймером 18+ и реф-ссылкой, `/play`, `/rank`, `/learn`, `/settings`, `/help`), `/league` в группах (кнопка «Вступить», частные лиги = рейтинг недельных портфелей участников), скрытая `/admin` (owner chat_id: игроки, D1/D7, бан, завершение/перезапуск сезона). Уведомления ≤ 3/день, каждое отключается. Рефералы + бейдж «Вербовщик». Удалить старые ~48 команд.
+
+**Фаза 5 — Обучение.** 10 уроков RU/EN (контент от пользователя) в `content/lessons/*.md`, XP и уровни, открытие пар по уровню (старт BTC/ETH/SOL), микроуроки по триггерам (RSI > 70 при покупке и т.п.), шаблонный разбор каждой закрытой сделки (индикаторы + мнения ИИ для BTC/ETH/SOL).
+
+**Фаза 6 — Канал.** Шаблонные посты (утро/день/вечер, итоги сезонов, «ход ИИ недели»), картинка графика (matplotlib), шеринг-карточка с реф-ссылкой.
+
+**Фаза 7 — Эксплуатация.** Планировщик в приложении (сезоны, `check_stops` каждую минуту, снимки, ИИ на 5m, посты), удаление Airflow, docker-compose (Postgres, API, бот, воркер цен, планировщик, ngrok со статическим доменом через один env, бэкапы `pg_dump` 14 дней), таблица событий аналитики (`start`, `trade`, `lesson_done`, `share`, `return`) и retention D7, бэкфилл свечей через ccxt после реконнекта, Bybit WS для графиков.
