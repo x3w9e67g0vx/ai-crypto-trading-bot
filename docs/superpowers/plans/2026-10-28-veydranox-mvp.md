@@ -36,7 +36,7 @@
 
 ---
 
-## Фаза 1 — Игровое ядро (этот план, детально)
+## Фаза 1 — Игровое ядро (этот план, детально) — ✅ выполнена, 50 тестов
 
 ### File Structure
 
@@ -66,11 +66,11 @@
 - Produces: `app.game.errors`: `GameError(Exception)` с атрибутом `code: str`; наследники `StaleQuote`, `UnknownSymbol`, `InsufficientFunds`, `PairLimitExceeded`, `DailyTradeLimit`, `PositionExists`, `PositionNotFound`, `InvalidStops`, `SeasonClosed`, `InvalidAmount`.
 - Produces: фикстура `db` (Session на `sqlite://` с `Base.metadata.create_all`), фабрики `make_player(db, **kw)`, `make_season(db, kind, start_ms)`.
 
-- [ ] **Step 1: Тест** `test_game_symbols_are_unique_and_include_starters`: `len(GAME_SYMBOLS) == 20`, `len(set(GAME_SYMBOLS)) == 20`, `GAME_SYMBOLS[:3] == STARTER_SYMBOLS`, все оканчиваются на `/USDT`.
-- [ ] **Step 2:** `pytest tests/game/test_config.py -v` → FAIL (нет модуля).
-- [ ] **Step 3:** Реализовать `config.py`, `errors.py` (каждая ошибка задаёт `code` = snake_case имени), `pytest.ini` (`testpaths = tests`), `requirements-dev.txt` (`pytest`).
-- [ ] **Step 4:** Тест → PASS.
-- [ ] **Step 5:** Commit `feat(game): add game config, errors and test setup`.
+- [x] **Step 1: Тест** `test_game_symbols_are_unique_and_include_starters`: `len(GAME_SYMBOLS) == 20`, `len(set(GAME_SYMBOLS)) == 20`, `GAME_SYMBOLS[:3] == STARTER_SYMBOLS`, все оканчиваются на `/USDT`.
+- [x] **Step 2:** `pytest tests/game/test_config.py -v` → FAIL (нет модуля).
+- [x] **Step 3:** Реализовать `config.py`, `errors.py` (каждая ошибка задаёт `code` = snake_case имени), `pytest.ini` (`testpaths = tests`), `requirements-dev.txt` (`pytest`).
+- [x] **Step 4:** Тест → PASS.
+- [x] **Step 5:** Commit `feat(game): add game config, errors and test setup`.
 
 ### Task 2: ORM-модели игры
 
@@ -90,22 +90,22 @@
   - `LeagueMembership`: `group_id`, `portfolio_id` (unique), `joined_at`.
   - `Badge`: `player_id`, `code` (`"sniper"|"iron_nerves"|"beat_ai"|"recruiter"`), `season_id` (nullable), `created_at`.
 
-- [ ] **Step 1: Тест** `test_portfolio_is_unique_per_player_and_season`: второй `Portfolio` с той же парой → `IntegrityError`. `test_ai_player_has_no_telegram_id`: `Player(is_ai=True, ai_key="lstm", telegram_id=None)` сохраняется.
-- [ ] **Step 2:** FAIL.
-- [ ] **Step 3:** Реализовать модели на `app.core.db.base.Base`.
-- [ ] **Step 4:** PASS.
-- [ ] **Step 5:** Commit `feat(game): add game ORM models`.
+- [x] **Step 1: Тест** `test_portfolio_is_unique_per_player_and_season`: второй `Portfolio` с той же парой → `IntegrityError`. `test_ai_player_has_no_telegram_id`: `Player(is_ai=True, ai_key="lstm", telegram_id=None)` сохраняется.
+- [x] **Step 2:** FAIL.
+- [x] **Step 3:** Реализовать модели на `app.core.db.base.Base`.
+- [x] **Step 4:** PASS.
+- [x] **Step 5:** Commit `feat(game): add game ORM models`.
 
 ### Task 3: QuoteBook
 
 **Files:** Create `app/game/quotes.py`; Test `tests/game/test_quotes.py`
 
 **Interfaces:**
-- Produces: `@dataclass(frozen=True) Quote(symbol: str, bid: float, ask: float, ts: int)`; `class QuoteBook`: `update(quote: Quote) -> None` (игнорирует более старый `ts`), `get(symbol: str, now_ms: int) -> Quote` (raise `StaleQuote` если нет или `now_ms - ts > STALE_AFTER_MS`), `is_fresh(symbol, now_ms) -> bool`, `last_update_ms() -> int | None`.
+- Produces: `@dataclass(frozen=True) Quote(symbol: str, bid: float, ask: float, ts: int)`; `class QuoteBook`: `update(quote: Quote) -> None` (игнорирует более старый `ts`), `get(symbol: str, now_ms: int) -> Quote` (raise `StaleQuote` если нет или `now_ms - ts > STALE_AFTER_MS`), `is_fresh(symbol, now_ms) -> bool`, `last(symbol) -> Quote | None` (без проверки свежести, для оценки портфеля), `last_update_ms() -> int | None`.
 
-- [ ] **Step 1: Тесты** `test_get_fresh_quote`, `test_stale_after_30_seconds` (ts=0, now=30_000 → ок; now=30_001 → `StaleQuote`), `test_missing_symbol_is_stale`, `test_older_update_ignored`.
-- [ ] **Step 2:** FAIL. **Step 3:** реализовать. **Step 4:** PASS.
-- [ ] **Step 5:** Commit `feat(game): add quote book with staleness`.
+- [x] **Step 1: Тесты** `test_get_fresh_quote`, `test_stale_after_30_seconds` (ts=0, now=30_000 → ок; now=30_001 → `StaleQuote`), `test_missing_symbol_is_stale`, `test_older_update_ignored`.
+- [x] **Step 2:** FAIL. **Step 3:** реализовать. **Step 4:** PASS.
+- [x] **Step 5:** Commit `feat(game): add quote book with staleness`.
 
 ### Task 4: Торговый движок
 
@@ -129,7 +129,7 @@
   - Дневной лимит считает только `is_user` сделки (открытие и закрытие), SL/TP и закрытие сезона не блокируются и в лимит не идут. `trades_count` растёт на каждой сделке (включая авто).
   - Символ вне `GAME_SYMBOLS` → `UnknownSymbol`; сезон не `active` → `SeasonClosed` (для `reason="season_end"` разрешено при `closing`).
 
-- [ ] **Step 1: Тесты** (bid=99, ask=101, портфель 10 000):
+- [x] **Step 1: Тесты** (bid=99, ask=101, портфель 10 000):
   - `test_open_long_charges_ask_plus_fee`: amount 1000 → `qty == 1000/101`, `cash == 10000 − 1000 − 1`.
   - `test_close_long_at_bid`: потом bid=110 → `pnl == qty·110·0.999 − 1001` (approx), позиция закрыта, `close_reason == "manual"`.
   - `test_open_short_reserves_and_profits_on_drop`: шорт 1000 по bid 99, затем ask=90 → `pnl ≈ (99−90)·qty − 1 − qty·90·0.001`.
@@ -140,8 +140,8 @@
   - `test_stops_skip_stale_quotes` (Review Focus 3): котировка протухла при цене за SL → `check_stops` ничего не закрывает; после свежей котировки — закрывает по ней.
   - `test_trading_paused_when_stale`: `open_position` со старой котировкой → `StaleQuote`.
   - `test_invalid_stops_rejected`, `test_position_exists`, `test_unknown_symbol`.
-- [ ] **Step 2:** FAIL. **Step 3:** реализовать. **Step 4:** PASS.
-- [ ] **Step 5:** Commit `feat(game): add market order engine with limits and stops`.
+- [x] **Step 2:** FAIL. **Step 3:** реализовать. **Step 4:** PASS.
+- [x] **Step 5:** Commit `feat(game): add market order engine with limits and stops`.
 
 ### Task 5: Сезоны
 
@@ -154,9 +154,9 @@
   - `ensure_current_season(db, kind, now_ms) -> Season` — возвращает активный сезон текущего окна или создаёт.
   - `join_season(db, player, season, now_ms) -> Portfolio` — идемпотентно; создаёт портфель с `STARTING_BALANCE`; для недели и не-ИИ вызывает `leagues.assign_group` (Task 7; до Task 7 — без лиг); забаненным → `SeasonClosed`.
   - `finalize_season(db, season, quotes, now_ms) -> bool` — если `now_ms ≥ ends_at`: статус `closing`, закрывает все открытые позиции (`reason="season_end"`, `is_user=False`) там, где котировка свежая; если остались открытые — возвращает `False`; иначе статус `finished`, вызывает хуки итогов (бейджи — Task 6, лиги — Task 7) и возвращает `True`.
-- [ ] **Step 1: Тесты** `test_sprint_bounds_utc_day`, `test_week_bounds_monday` (2026-10-28 среда → 2026-10-26 00:00 … 2026-11-02 00:00 UTC), `test_ensure_current_season_idempotent`, `test_join_is_idempotent_and_funds_10000`, `test_finalize_closes_positions_at_market`, `test_finalize_waits_for_fresh_quotes` (Review Focus 4), `test_finalize_before_end_is_noop`.
-- [ ] **Step 2–4:** FAIL → реализовать → PASS.
-- [ ] **Step 5:** Commit `feat(game): add season lifecycle`.
+- [x] **Step 1: Тесты** `test_sprint_bounds_utc_day`, `test_week_bounds_monday` (2026-10-28 среда → 2026-10-26 00:00 … 2026-11-02 00:00 UTC), `test_ensure_current_season_idempotent`, `test_join_is_idempotent_and_funds_10000`, `test_finalize_closes_positions_at_market`, `test_finalize_waits_for_fresh_quotes` (Review Focus 4), `test_finalize_before_end_is_noop`.
+- [x] **Step 2–4:** FAIL → реализовать → PASS.
+- [x] **Step 5:** Commit `feat(game): add season lifecycle`.
 
 ### Task 6: Рейтинг и бейджи
 
@@ -169,10 +169,10 @@
   - `win_rate(db, portfolio) -> float | None` — доля закрытых позиций с `pnl > 0`; `None` если закрытых нет.
   - `max_drawdown(db, portfolio) -> float` — по `PortfolioSnapshot` + стартовый баланс, доля 0..1.
   - `take_snapshots(db, quotes, now_ms) -> int` — снимок стоимости всех портфелей активных сезонов.
-  - `award_season_badges(db, season, now_ms) -> list[Badge]` — «sniper» (макс. win rate) и «iron_nerves» (мин. просадка) среди людей с ≥ 5 сделками и аккаунтом ≥ 3 дней; «beat_ai» каждому такому человеку, у кого `return_pct` выше всех ИИ-портфелей сезона. Ничьи — бейдж всем лидерам.
-- [ ] **Step 1: Тесты** `test_unqualified_ranked_after_qualified`, `test_ai_not_ranked_but_listed`, `test_win_rate`, `test_max_drawdown_from_snapshots`, `test_badges_skip_young_accounts`, `test_beat_ai_badge`.
-- [ ] **Step 2–4:** FAIL → реализовать → PASS; подключить `award_season_badges` в `finalize_season`.
-- [ ] **Step 5:** Commit `feat(game): add leaderboard and season badges`.
+  - `award_season_badges(db, season, quotes, now_ms) -> list[Badge]` — «sniper» (макс. win rate) и «iron_nerves» (мин. просадка) среди людей с ≥ 5 сделками и аккаунтом ≥ 3 дней; «beat_ai» каждому такому человеку, у кого `return_pct` выше всех ИИ-портфелей сезона. Ничьи — бейдж всем лидерам.
+- [x] **Step 1: Тесты** `test_unqualified_ranked_after_qualified`, `test_ai_not_ranked_but_listed`, `test_win_rate`, `test_max_drawdown_from_snapshots`, `test_badges_skip_young_accounts`, `test_beat_ai_badge`.
+- [x] **Step 2–4:** FAIL → реализовать → PASS; подключить `award_season_badges` в `finalize_season`.
+- [x] **Step 5:** Commit `feat(game): add leaderboard and season badges`.
 
 ### Task 7: Лиги
 
@@ -183,10 +183,10 @@
   - `assign_group(db, portfolio, season, now_ms) -> LeagueGroup` — лига = `player.league_tier`; первая группа этой лиги с < 30 участниками; если все полные: в первые 24 ч сезона — новая группа, позже — наименее заполненная существующая; если групп нет — создать `number=1`.
   - `movement_count(group_size: int, qualified: int) -> int` — `5` если `group_size ≥ 30`, иначе `floor(0.2·qualified)` при `qualified ≥ 5`, иначе `0`.
   - `compute_movements(ranked_qualified: list[int], group_size: int) -> tuple[list[int], list[int]]` — (повышаются, понижаются) player_id.
-  - `apply_week_results(db, season, standings_by_group) -> None` — двигает `league_tier` на одну ступень (границы Бронза/Алмаз), игроки с `league_tier > bronze` без портфеля в сезоне или с 0 сделок понижаются на одну лигу; неквалифицированные (1–4 сделки) остаются.
-- [ ] **Step 1: Тесты** `test_movement_count` (30/30→5; 29 при 10 квалиф.→2; 12 при 5→1; 12 при 4→0), `test_full_group_top5_bottom5`, `test_small_group_no_movement` (Review Focus 5), `test_inactive_player_demoted`, `test_bronze_not_demoted_diamond_not_promoted`, `test_assign_fills_group_then_creates_new`, `test_midweek_join_goes_to_existing_group`.
-- [ ] **Step 2–4:** FAIL → реализовать → PASS.
-- [ ] **Step 5:** Commit `feat(game): add weekly leagues with promotion and demotion`.
+  - `apply_week_results(db, season, quotes, now_ms) -> None` (сам строит `standings` по каждой группе) — двигает `league_tier` на одну ступень (границы Бронза/Алмаз), игроки с `league_tier > bronze` без портфеля в сезоне или с 0 сделок понижаются на одну лигу; неквалифицированные (1–4 сделки) остаются.
+- [x] **Step 1: Тесты** `test_movement_count` (30/30→5; 29 при 10 квалиф.→2; 12 при 5→1; 12 при 4→0), `test_full_group_top5_bottom5`, `test_small_group_no_movement` (Review Focus 5), `test_inactive_player_demoted`, `test_bronze_not_demoted_diamond_not_promoted`, `test_assign_fills_group_then_creates_new`, `test_midweek_join_goes_to_existing_group`.
+- [x] **Step 2–4:** FAIL → реализовать → PASS.
+- [x] **Step 5:** Commit `feat(game): add weekly leagues with promotion and demotion`.
 
 ### Task 8: Binance price feed
 
@@ -196,10 +196,10 @@
 - Produces:
   - `stream_url(symbols: Iterable[str]) -> str` — `wss://stream.binance.com:9443/stream?streams=btcusdt@bookTicker/btcusdt@kline_1m/...`.
   - `parse_message(raw: dict, now_ms: int) -> Quote | ClosedCandle | None` — `bookTicker` → `Quote(symbol="BTC/USDT", bid=float(b), ask=float(a), ts=now_ms)`; `kline` c `k.x == True` → `ClosedCandle(symbol, open_time, o, h, l, c, v)`; остальное → `None`.
-  - `class BinanceFeed(quotes: QuoteBook, symbols, on_candle: Callable[[ClosedCandle], Awaitable[None]] | None)`: `async run()` — aiohttp WS, экспоненциальный реконнект 1→30 с, после реконнекта вызывает `on_gap(last_candle_ms)` (бэкфилл через ccxt — в фазе 7).
-- [ ] **Step 1: Тесты** `test_stream_url`, `test_parse_book_ticker`, `test_parse_closed_kline_only`, `test_parse_unknown_returns_none`.
-- [ ] **Step 2–4:** FAIL → реализовать → PASS.
-- [ ] **Step 5:** Commit `feat(game): add binance websocket price feed`.
+  - `next_backoff(current) -> float` (×2, максимум 30 с); `class BinanceFeed(quotes, symbols=GAME_SYMBOLS, on_candle=None, on_reconnect=None)`: `async run()`, `stop()` — aiohttp WS, реконнект с backoff, после реконнекта вызывает `on_reconnect(last_candle_ms)` (бэкфилл через ccxt — в фазе 7).
+- [x] **Step 1: Тесты** `test_stream_url`, `test_parse_book_ticker`, `test_parse_closed_kline_only`, `test_parse_unknown_returns_none`.
+- [x] **Step 2–4:** FAIL → реализовать → PASS.
+- [x] **Step 5:** Commit `feat(game): add binance websocket price feed`.
 
 ---
 
