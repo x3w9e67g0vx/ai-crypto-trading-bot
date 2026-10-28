@@ -145,7 +145,13 @@
     "note.no_stop_loss": "Убыток без стоп-лосса: стоп помог бы ограничить потерю заранее.",
     "note.with_ai": "Большинство ИИ думали так же, как ты.",
     "note.against_ai": "Большинство ИИ думали иначе.",
-    "profile.level": "Уровень"
+    "profile.level": "Уровень",
+    "share.title": "Поделиться результатом",
+    "share.button": "📤 Поделиться",
+    "share.hint": "Карточка с результатом сезона и ссылкой-приглашением. За приглашённого друга — бейдж «Вербовщик».",
+    "share.send": "Отправить другу",
+    "share.story": "В сторис",
+    "share.close": "Закрыть"
   },
   "en": {
     "disclaimer": "VEYDRANOX is an educational game. Money is virtual, nothing here is investment advice. 18+.",
@@ -293,6 +299,12 @@
     "note.no_stop_loss": "A loss without a stop-loss: a stop would have capped it in advance.",
     "note.with_ai": "Most AIs thought the same as you.",
     "note.against_ai": "Most AIs thought otherwise.",
-    "profile.level": "Level"
+    "profile.level": "Level",
+    "share.title": "Share your result",
+    "share.button": "📤 Share",
+    "share.hint": "A card with your season result and an invite link. Invite a friend to earn the Recruiter badge.",
+    "share.send": "Send to a friend",
+    "share.story": "Post a story",
+    "share.close": "Close"
   }
 }

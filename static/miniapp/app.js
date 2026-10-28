@@ -746,6 +746,54 @@
         });
     }
 
+    // ---------- share ----------
+
+    function canShareStory() {
+        return Boolean(tg && tg.shareToStory && tg.isVersionAtLeast && tg.isVersionAtLeast("7.8"));
+    }
+
+    function shareModal(data) {
+        return modal(
+            `<h2>${esc(t("share.title"))}</h2>
+             <img class="share-card" src="${esc(data.image_url)}" alt="">
+             <p>${esc(data.text)}</p>
+             <div class="tip-actions">
+               ${data.link ? `<button class="primary" id="share-send">${esc(t("share.send"))}</button>` : ""}
+               ${canShareStory() ? `<button id="share-story">${esc(t("share.story"))}</button>` : ""}
+               <button id="share-close">${esc(t("share.close"))}</button>
+             </div>`,
+            (dialog, done) => {
+                dialog.addEventListener("cancel", () => done(), { once: true });
+                const send = $("#share-send", dialog);
+                if (send) {
+                    send.onclick = () => {
+                        const url = `https://t.me/share/url?url=${encodeURIComponent(data.link)}&text=${encodeURIComponent(data.text)}`;
+                        tg.openTelegramLink(url);
+                        done();
+                    };
+                }
+                const story = $("#share-story", dialog);
+                if (story) {
+                    story.onclick = () => {
+                        // Telegram downloads the card itself, so it needs an absolute URL.
+                        const media = new URL(data.image_url, location.origin).href;
+                        tg.shareToStory(media, { text: data.link ? `${data.text} ${data.link}` : data.text });
+                        done();
+                    };
+                }
+                $("#share-close", dialog).onclick = () => done();
+            },
+        );
+    }
+
+    async function share() {
+        try {
+            await shareModal(await api("/game/share", { method: "POST", body: { season: state.season } }));
+        } catch (error) {
+            toast(errorText(error));
+        }
+    }
+
     // ---------- profile ----------
 
     async function profileScreen() {
@@ -767,8 +815,14 @@
               <li><div class="grow hint">${esc(t("profile.xp"))}</div><span class="num">${player.xp}</span></li>
             </ul>
             ${levelCard(player)}
+            <h2>${esc(t("share.title"))}</h2>
+            ${seasonSwitch()}
+            <p class="hint">${esc(t("share.hint"))}</p>
+            <button class="primary" id="share">${esc(t("share.button"))}</button>
             <h2>${esc(t("profile.badges"))}</h2>
             <ul class="list">${badges}</ul>`;
+        bindSeasonSwitch();
+        $("#share").onclick = share;
         $("#change-nick").onclick = async () => {
             if (await nicknameModal({ required: false })) {
                 toast(t("saved"));

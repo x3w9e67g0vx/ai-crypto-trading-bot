@@ -55,3 +55,10 @@ def test_i18n_covers_tips_and_notes():
         missing = keys - set(strings[lang])
         assert not missing, (lang, missing)
     assert "learn.soon" not in strings["ru"]
+
+
+def test_i18n_covers_share():
+    strings = _strings()
+    keys = {f"share.{name}" for name in ("title", "button", "hint", "send", "story", "close")}
+    for lang in ("ru", "en"):
+        assert keys <= set(strings[lang]), (lang, keys - set(strings[lang]))

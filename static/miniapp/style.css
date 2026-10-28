@@ -523,3 +523,17 @@ dialog h2 {
     background: var(--accent);
     color: var(--accent-text);
 }
+
+.share-card {
+    display: block;
+    width: auto;
+    max-width: 100%;
+    max-height: 45vh;
+    margin: 0 auto 8px;
+    border-radius: var(--radius);
+}
+
+/* An odd last button (e.g. "Close" after two actions) takes the whole row. */
+.tip-actions button:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+}
