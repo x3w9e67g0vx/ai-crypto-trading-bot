@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import logging
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.game_deps import current_player, get_now_ms, get_quotes
@@ -35,6 +36,8 @@ from app.game.trading import (
     position_value,
     user_trades_today,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/game", tags=["game"])
 
@@ -231,12 +234,18 @@ def place_order(
             stop_loss=order.stop_loss,
             take_profit=order.take_profit,
         )
-        log_event(db, player, "trade", now_ms)
         db.commit()
     except IntegrityError:
         # A parallel order for the same pair won the race (unique open-position index).
         db.rollback()
         raise PositionExists(order.symbol)
+    try:
+        log_event(db, player, "trade", now_ms)
+        db.commit()
+    except SQLAlchemyError:
+        # Analytics must never fail a trade that is already committed.
+        db.rollback()
+        logger.exception("failed to log trade event")
     return _position_json(position, quotes)
 
 

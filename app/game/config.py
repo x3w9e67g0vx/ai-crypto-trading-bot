@@ -57,3 +57,9 @@ WEEK_MS = 7 * DAY_MS
 class SeasonKind(str, Enum):
     SPRINT = "sprint"
     WEEK = "week"
+
+# Bot notifications: at most this many per player per UTC day.
+NOTIFY_DAILY_CAP = 3
+SEASON_END_WARNING_MS = 60 * 60 * 1000
+# AI positions opened longer ago than this are not announced (e.g. after a bot restart).
+AI_OPEN_LOOKBACK_MS = 10 * 60 * 1000

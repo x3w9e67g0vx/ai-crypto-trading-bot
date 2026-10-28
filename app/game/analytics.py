@@ -17,7 +17,12 @@ def log_event(db: Session, player: Player, kind: str, now_ms: int, *, once_per_d
         day_start = _day(now_ms) * DAY_MS
         seen = (
             db.query(Event.id)
-            .filter(Event.player_id == player.id, Event.kind == kind, Event.created_at >= day_start)
+            .filter(
+                Event.player_id == player.id,
+                Event.kind == kind,
+                Event.created_at >= day_start,
+                Event.created_at < day_start + DAY_MS,
+            )
             .first()
         )
         if seen is not None:

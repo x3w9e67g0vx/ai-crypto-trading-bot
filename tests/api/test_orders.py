@@ -115,3 +115,18 @@ def test_order_logs_trade(client, db):
     assert _order(client).status_code == 200
     assert _order(client, symbol="ETH/USDT", amount_usdt=10**9).status_code == 409
     assert [kind for (kind,) in db.query(Event.kind).filter_by(kind="trade")] == ["trade"]
+
+
+def test_trade_event_failure_is_not_position_exists(client, monkeypatch):
+    from sqlalchemy.exc import IntegrityError
+
+    import app.api.game_routes as routes
+
+    def broken_log(*args, **kwargs):
+        raise IntegrityError("insert", {}, Exception("events"))
+
+    monkeypatch.setattr(routes, "log_event", broken_log)
+    response = _order(client)
+
+    assert response.status_code == 200
+    assert response.json()["symbol"] == "BTC/USDT"
