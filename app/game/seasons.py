@@ -21,13 +21,39 @@ def season_bounds(kind: SeasonKind, at_ms: int) -> tuple[int, int]:
 
 
 def ensure_current_season(db: Session, kind: SeasonKind, now_ms: int) -> Season:
+    """The season covering now; normally the calendar one, after an admin end the one that replaced it."""
+    season = (
+        db.query(Season)
+        .filter(Season.kind == kind.value, Season.starts_at <= now_ms, Season.ends_at > now_ms)
+        .order_by(Season.starts_at.desc())
+        .first()
+    )
+    if season is not None:
+        return season
     starts_at, ends_at = season_bounds(kind, now_ms)
-    season = db.query(Season).filter_by(kind=kind.value, starts_at=starts_at).one_or_none()
-    if season is None:
-        season = Season(kind=kind.value, starts_at=starts_at, ends_at=ends_at, status="active")
-        db.add(season)
-        db.flush()
+    if db.query(Season.id).filter_by(kind=kind.value, starts_at=starts_at).first() is not None:
+        # The calendar season was ended early; the rest of the period gets a new one.
+        starts_at = now_ms
+    season = Season(kind=kind.value, starts_at=starts_at, ends_at=ends_at, status="active")
+    db.add(season)
+    db.flush()
     return season
+
+
+def end_season_now(
+    db: Session, kind: SeasonKind, quotes: QuoteBook, now_ms: int, *, settle: bool
+) -> tuple[Season, Season, bool]:
+    """Admin: end the running season now and open the next one for the rest of the period.
+
+    settle=False (restart) closes positions but awards nothing. Returns (ended, new, done);
+    done is False while positions still wait for a fresh price, finalize_season finishes later.
+    """
+    season = ensure_current_season(db, kind, now_ms)
+    season.ends_at = now_ms
+    if not settle:
+        season.status = "voiding"
+    done = finalize_season(db, season, quotes, now_ms)
+    return season, ensure_current_season(db, kind, now_ms), done
 
 
 def join_season(db: Session, player: Player, season: Season, now_ms: int) -> Portfolio:
@@ -53,12 +79,17 @@ def join_season(db: Session, player: Player, season: Season, now_ms: int) -> Por
 
 
 def finalize_season(db: Session, season: Season, quotes: QuoteBook, now_ms: int) -> bool:
-    """Close a finished season. Returns False while positions still await a fresh price."""
-    if season.status == "finished":
+    """Close a finished season. Returns False while positions still await a fresh price.
+
+    A voided season (admin restart) goes voiding -> voided and is never settled.
+    """
+    if season.status in ("finished", "voided"):
         return True
     if now_ms < season.ends_at:
         return False
-    season.status = "closing"
+    voiding = season.status == "voiding"
+    if not voiding:
+        season.status = "closing"
 
     remaining = (
         db.query(Position)
@@ -77,6 +108,10 @@ def finalize_season(db: Session, season: Season, quotes: QuoteBook, now_ms: int)
         db.flush()
         return False
 
+    if voiding:
+        season.status = "voided"
+        db.flush()
+        return True
     season.status = "finished"
     db.flush()
     _settle(db, season, quotes, now_ms)

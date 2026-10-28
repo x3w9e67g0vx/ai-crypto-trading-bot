@@ -54,7 +54,8 @@ class Season(Base):
     kind = Column(String, nullable=False, index=True)
     starts_at = Column(BigInteger, nullable=False)
     ends_at = Column(BigInteger, nullable=False)
-    # active -> closing (ended, positions still being closed) -> finished
+    # active -> closing (ended, positions still being closed) -> finished;
+    # an admin restart goes active -> voiding -> voided, without results.
     status = Column(String, nullable=False, default="active", index=True)
 
 

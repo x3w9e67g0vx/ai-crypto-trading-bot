@@ -83,3 +83,59 @@ def test_finalize_waits_for_fresh_quotes(db, quotes):
     assert finalize_season(db, season, quotes, end + 60_000) is True
     assert position.exit_price == 98.0
     assert season.status == "finished"
+
+
+def test_end_now_settles_and_opens_next_season(db, quotes):
+    from app.game.models import Badge
+    from app.game.seasons import end_season_now
+
+    old = ensure_current_season(db, SeasonKind.WEEK, NOW)
+    player = make_player(db, telegram_id=1)
+    portfolio = join_season(db, player, old, NOW)
+    position = open_position(db, portfolio, "BTC/USDT", "long", 1000.0, quotes, NOW)
+    portfolio.trades_count = 5
+
+    ended, new, done = end_season_now(db, SeasonKind.WEEK, quotes, NOW, settle=True)
+
+    assert ended.id == old.id and done is True
+    assert old.status == "finished" and old.ends_at == NOW
+    assert position.close_reason == "season_end"
+    assert db.query(Badge).filter_by(season_id=old.id).count() > 0
+    assert (new.starts_at, new.ends_at) == (NOW, season_bounds(SeasonKind.WEEK, NOW)[1])
+    assert ensure_current_season(db, SeasonKind.WEEK, NOW + 1).id == new.id
+    assert join_season(db, player, new, NOW + 1).cash == 10_000
+
+
+def test_restart_skips_settlement(db, quotes):
+    from app.game.models import Badge
+    from app.game.seasons import end_season_now
+
+    old = ensure_current_season(db, SeasonKind.SPRINT, NOW)
+    portfolio = join_season(db, make_player(db, telegram_id=1), old, NOW)
+    portfolio.trades_count = 5
+
+    _, new, done = end_season_now(db, SeasonKind.SPRINT, quotes, NOW, settle=False)
+
+    assert done is True and old.status == "voided"
+    assert db.query(Badge).count() == 0
+    assert new.status == "active"
+
+
+def test_end_now_with_stale_quotes_opens_next_season(db, quotes):
+    from app.game.seasons import end_season_now
+
+    old = ensure_current_season(db, SeasonKind.SPRINT, NOW)
+    portfolio = join_season(db, make_player(db, telegram_id=1), old, NOW)
+    position = open_position(db, portfolio, "BTC/USDT", "long", 1000.0, quotes, NOW)
+    later = NOW + 10 * 60_000
+
+    _, new, done = end_season_now(db, SeasonKind.SPRINT, quotes, later, settle=False)
+
+    assert done is False and old.status == "voiding" and position.closed_at is None
+    fresh = join_season(db, make_player(db, telegram_id=2, nickname="p2"), new, later)
+    quotes.update(Quote("ETH/USDT", bid=99.0, ask=101.0, ts=later))
+    open_position(db, fresh, "ETH/USDT", "long", 100.0, quotes, later)
+
+    quotes.update(Quote("BTC/USDT", bid=98.0, ask=100.0, ts=later + 60_000))
+    assert finalize_season(db, old, quotes, later + 60_000) is True
+    assert old.status == "voided" and position.close_reason == "season_end"

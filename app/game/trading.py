@@ -167,7 +167,7 @@ def close_position(
         raise PositionNotFound(position.id)
     portfolio = position.portfolio
     status = portfolio.season.status
-    if status == "finished" or (status == "closing" and reason != "season_end"):
+    if status in ("finished", "voided") or (status in ("closing", "voiding") and reason != "season_end"):
         raise SeasonClosed(portfolio.season_id)
     if is_user:
         _check_daily_limit(db, portfolio, now_ms)
