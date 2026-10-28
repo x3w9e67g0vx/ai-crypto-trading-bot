@@ -250,3 +250,18 @@ class LessonProgress(Base):
     player_id = Column(Integer, ForeignKey("players.id"), nullable=False, index=True)
     lesson_id = Column(String, nullable=False)
     completed_at = Column(BigInteger, nullable=False)
+
+
+class ChannelPost(Base):
+    """A post published to the channel; the unique (kind, key) stops repeats."""
+
+    __tablename__ = "channel_posts"
+    __table_args__ = (
+        UniqueConstraint("kind", "key", name="uq_channel_post"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    kind = Column(String, nullable=False)  # morning | lesson | evening | season | ai_move
+    # UTC date for daily slots, season id for results.
+    key = Column(String, nullable=False)
+    created_at = Column(BigInteger, nullable=False, index=True)

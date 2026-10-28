@@ -86,3 +86,11 @@ INSIGHT_MIN_CANDLES = 30
 INSIGHT_MAX_AGE_MS = 15 * 60 * 1000
 MAX_TIPS_PER_ORDER = 2
 BIG_POSITION_SHARE = 0.25
+
+# Channel posts: daily slots as offsets from 00:00 UTC (09:00, 13:00, 21:00 MSK).
+HOUR_MS = 60 * 60 * 1000
+CHANNEL_SLOTS = {"morning": 6 * HOUR_MS, "lesson": 10 * HOUR_MS, "evening": 18 * HOUR_MS}
+# A slot post missed for longer than this (bot was down) is skipped.
+CHANNEL_SLOT_WINDOW_MS = 2 * HOUR_MS
+# Season results are posted only this long after the season ended.
+CHANNEL_RESULTS_WINDOW_MS = 2 * DAY_MS

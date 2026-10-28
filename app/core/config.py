@@ -21,6 +21,10 @@ class Settings:
     # Owner's Telegram user id: the only one who can use the hidden /admin.
     ADMIN_CHAT_ID: int | None = int(os.environ["ADMIN_CHAT_ID"]) if os.getenv("ADMIN_CHAT_ID", "").strip() else None
     MINIAPP_URL: str = os.getenv("MINIAPP_URL", "").strip()
+    # Channel for automatic posts (@name or -100...); empty turns posting off.
+    CHANNEL_ID: str = os.getenv("CHANNEL_ID", "").strip()
+    # Bot username for referral links built outside the bot (the API).
+    BOT_USERNAME: str = os.getenv("BOT_USERNAME", "").strip().lstrip("@")
     DEFAULT_SYMBOLS: str = os.getenv("DEFAULT_SYMBOLS", "BTC/USDT,ETH/USDT,SOL/USDT")
 
     @property

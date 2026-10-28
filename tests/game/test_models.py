@@ -51,3 +51,15 @@ def test_chat_league_member_unique(db):
 def test_new_player_has_notifications_enabled(db):
     player = make_player(db, telegram_id=1)
     assert (player.notify_overtaken, player.notify_ai_open, player.notify_season_end) == (True, True, True)
+
+
+def test_channel_post_unique(db):
+    from app.game.models import ChannelPost
+
+    db.add(ChannelPost(kind="morning", key="2026-10-28", created_at=NOW))
+    db.flush()
+    db.add(ChannelPost(kind="evening", key="2026-10-28", created_at=NOW))
+    db.flush()
+    db.add(ChannelPost(kind="morning", key="2026-10-28", created_at=NOW + 1))
+    with pytest.raises(IntegrityError):
+        db.flush()
