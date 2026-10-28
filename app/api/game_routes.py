@@ -1,18 +1,21 @@
 from __future__ import annotations
 
+import hmac
 import logging
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.game_deps import current_player, get_now_ms, get_quotes
+from app.core.config import settings
 from app.core.db.dependencies import get_db
 from app.core.db.models import Candle
 from app.game.ai_personas import PERSONAS
 from app.game.analytics import log_event
+from app.game.charts import share_card
 from app.game.ai_view import ai_decisions_view, ai_positions_view, is_pro
 from app.game.config import (
     CHART_TIMEFRAME,
@@ -33,7 +36,9 @@ from app.game.models import Badge, Player, Portfolio, Position
 from app.game.players import unlocked_symbols, validate_nickname
 from app.game.progress import complete_lesson, completed_lessons, level_info
 from app.game.quotes import QuoteBook
+from app.game.referrals import ref_link
 from app.game.seasons import current_portfolio, ensure_current_season
+from app.game.share import card_sig, share_info, share_text
 from app.game.trading import (
     close_position,
     open_position,
@@ -456,3 +461,62 @@ def pass_lesson(
     xp_awarded = complete_lesson(db, player, lesson, body.answer, now_ms)
     db.commit()
     return {"xp_awarded": xp_awarded, "player": _player_json(db, player, now_ms)}
+
+
+class ShareRequest(BaseModel):
+    season: SeasonParam
+
+
+@router.post("/share")
+def share(
+    request: ShareRequest,
+    player: Player = Depends(current_player),
+    db: Session = Depends(get_db),
+    quotes: QuoteBook = Depends(get_quotes),
+    now_ms: int = Depends(get_now_ms),
+) -> dict:
+    """Share text, referral link and a signed link to the card picture."""
+    portfolio = current_portfolio(db, player, request.season, now_ms)
+    info = share_info(db, portfolio, quotes, now_ms)
+    log_event(db, player, "share", now_ms)
+    db.commit()
+    return {
+        "text": share_text(info, request.season, player.language),
+        "link": ref_link(settings.BOT_USERNAME, player) if settings.BOT_USERNAME else None,
+        "image_url": f"/game/share/{portfolio.id}.png?sig={card_sig(portfolio.id)}",
+        "return_pct": info.return_pct,
+        "rank": info.rank,
+        "beat_ai_by": info.beat_ai_by,
+    }
+
+
+CARD_MAX_AGE_S = 300
+
+
+@router.get("/share/{portfolio_id}.png")
+def share_card_png(
+    portfolio_id: int,
+    sig: str = "",
+    db: Session = Depends(get_db),
+    quotes: QuoteBook = Depends(get_quotes),
+    now_ms: int = Depends(get_now_ms),
+) -> Response:
+    """Public (Telegram fetches it for stories), so only a signed link opens a card."""
+    portfolio = db.get(Portfolio, portfolio_id)
+    if (
+        not hmac.compare_digest(sig.encode(), card_sig(portfolio_id).encode())
+        or portfolio is None
+        or portfolio.player.is_ai
+        or portfolio.player.is_banned
+    ):
+        raise HTTPException(status_code=404)
+    info = share_info(db, portfolio, quotes, now_ms)
+    png = share_card(
+        nickname=portfolio.player.nickname,
+        season=portfolio.season.kind,
+        return_pct=info.return_pct,
+        rank=info.rank,
+        beat_ai_by=info.beat_ai_by,
+        lang=portfolio.player.language,
+    )
+    return Response(png, media_type="image/png", headers={"Cache-Control": f"public, max-age={CARD_MAX_AGE_S}"})

@@ -145,6 +145,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "channel.note.no_stop_loss": "• Убыток без стоп-лосса.",
         "channel.note.with_ai": "• Большинство ИИ думали так же.",
         "channel.note.against_ai": "• Большинство ИИ думали иначе.",
+        "share.beat_ai": "Мой результат {season}: {ret:+.2f}%, ИИ позади на {margin:.1f}%. Попробуй обойти его в VEYDRANOX!",
+        "share.result": "Мой результат {season}: {ret:+.2f}% в VEYDRANOX. Сможешь обойти ИИ?",
     },
     "en": {
         "disclaimer": (
@@ -273,6 +275,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "channel.note.no_stop_loss": "• A loss without a stop-loss.",
         "channel.note.with_ai": "• Most AIs thought the same.",
         "channel.note.against_ai": "• Most AIs thought otherwise.",
+        "share.beat_ai": "My result {season}: {ret:+.2f}%, AI left behind by {margin:.1f}%. Try to beat it in VEYDRANOX!",
+        "share.result": "My result {season}: {ret:+.2f}% in VEYDRANOX. Can you beat the AI?",
     },
 }
 
