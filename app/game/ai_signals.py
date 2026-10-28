@@ -6,7 +6,8 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.game.ai_personas import PERSONAS, Signal
-from app.game.config import AI_TIMEFRAME
+from app.game.config import AI_SYMBOLS, AI_TIMEFRAME
+from app.game.errors import UnknownSymbol
 from app.services.lstm_model_service import LSTMModelService
 from app.services.ml_model_service import MLModelService
 
@@ -33,6 +34,9 @@ def load_signals(
 
     A persona whose model is missing or whose data does not reach that
     candle is left out, so the others still trade."""
+    # The symbol and timeframe become model file names; accept only known ones.
+    if symbol not in AI_SYMBOLS or timeframe != AI_TIMEFRAME:
+        raise UnknownSymbol(f"{symbol} {timeframe}")
     signals = {}
     for persona in PERSONAS:
         try:

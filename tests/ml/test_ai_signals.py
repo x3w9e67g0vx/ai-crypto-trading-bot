@@ -1,3 +1,6 @@
+import pytest
+
+from app.game.errors import UnknownSymbol
 from app.game.ai_signals import load_signals
 from app.services.lstm_model_service import LSTMModelService
 from app.services.ml_model_service import MLModelService
@@ -41,3 +44,10 @@ def test_load_signals_drops_stale_candle(candles_db, model_dir):
 
     # The candle that just closed is not in the database yet.
     assert load_signals(candles_db, "BTC/USDT", LAST_TS + BAR_MS, model_dir=model_dir) == {}
+
+
+def test_load_signals_rejects_unknown_symbol(candles_db, model_dir):
+    with pytest.raises(UnknownSymbol):
+        load_signals(candles_db, "../../etc/passwd", LAST_TS, model_dir=model_dir)
+    with pytest.raises(UnknownSymbol):
+        load_signals(candles_db, "BTC/USDT", LAST_TS, timeframe="../1h", model_dir=model_dir)
