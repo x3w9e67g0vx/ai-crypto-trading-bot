@@ -1,7 +1,9 @@
 """Template posts for the public channel (Russian only, spec 4.7): no LLM, real game data."""
 from __future__ import annotations
 
+import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from html import escape
@@ -12,6 +14,9 @@ from app.core.db.models import Candle
 from app.game.config import (
     AI_SYMBOLS,
     AI_VISIBILITY_DELAY_MS,
+    CHANNEL_RESULTS_WINDOW_MS,
+    CHANNEL_SLOT_WINDOW_MS,
+    CHANNEL_SLOTS,
     CHART_TIMEFRAME,
     DAY_MS,
     HOUR_MS,
@@ -22,9 +27,11 @@ from app.game.charts import candle_chart
 from app.game.insights import CANDLE_MS, indicators_at, trade_review
 from app.game.leaderboard import standings
 from app.game.lessons import get_lesson, get_lessons
-from app.game.models import AiDecision, Badge, Fill, Player, Portfolio, Position, Season
+from app.game.models import AiDecision, Badge, ChannelPost, Fill, Player, Portfolio, Position, Season
 from app.game.quotes import QuoteBook
 from app.i18n.strings import t
+
+logger = logging.getLogger(__name__)
 
 LANG = "ru"
 CHART_CANDLES = 100
@@ -274,3 +281,67 @@ def ai_move_post(db: Session, season: Season, now_ms: int, bot_username: str) ->
     markers = [(position.opened_at, position.entry_price, "entry"), (position.closed_at, position.exit_price, "exit")]
     chart = candle_chart(candles, title=f"{position.symbol} · {CHART_TIMEFRAME}", markers=markers)
     return _post("ai_move", str(season.id), lines, bot_username, chart)
+
+
+def _slot_builders(db: Session, quotes: QuoteBook, bot_username: str) -> dict[str, Callable[[int], Post | None]]:
+    return {
+        "morning": lambda now_ms: morning_post(db, now_ms, bot_username),
+        "lesson": lambda now_ms: lesson_post(db, now_ms, bot_username),
+        "evening": lambda now_ms: evening_post(db, quotes, now_ms, bot_username),
+    }
+
+
+def due_posts(db: Session, quotes: QuoteBook, now_ms: int, bot_username: str) -> list[Post]:
+    """Posts to publish now, each recorded in channel_posts so it never goes out twice.
+
+    A post without data yet is not recorded and is retried while its window lasts.
+    """
+    candidates: list[tuple[str, str, Callable[[], Post | None]]] = []
+    finished = (
+        db.query(Season)
+        .filter(Season.status == "finished", Season.ends_at <= now_ms, Season.ends_at > now_ms - CHANNEL_RESULTS_WINDOW_MS)
+        .order_by(Season.ends_at, Season.id)
+        .all()
+    )
+    for season in finished:
+        candidates.append(("season", str(season.id), lambda season=season: season_post(db, season, quotes, now_ms, bot_username)))
+        candidates.append(("ai_move", str(season.id), lambda season=season: ai_move_post(db, season, now_ms, bot_username)))
+    day_start = now_ms - now_ms % DAY_MS
+    builders = _slot_builders(db, quotes, bot_username)
+    for kind, offset in CHANNEL_SLOTS.items():
+        if day_start + offset <= now_ms < day_start + offset + CHANNEL_SLOT_WINDOW_MS:
+            candidates.append((kind, day_key(now_ms), lambda build=builders[kind]: build(now_ms)))
+
+    posts = []
+    for kind, key, build in candidates:
+        if db.query(ChannelPost.id).filter_by(kind=kind, key=key).first() is not None:
+            continue
+        try:
+            post = build()
+        except Exception:
+            logger.exception("channel post %s/%s failed", kind, key)
+            continue
+        if post is None:
+            continue
+        db.add(ChannelPost(kind=kind, key=key, created_at=now_ms))
+        posts.append(post)
+    db.flush()
+    return posts
+
+
+PREVIEW_KINDS = ("morning", "lesson", "evening", "season", "ai_move")
+
+
+def preview_post(db: Session, quotes: QuoteBook, kind: str, now_ms: int, bot_username: str) -> Post | None:
+    """/admin preview: the post as it would look now, not recorded; results use the latest finished season."""
+    if kind in CHANNEL_SLOTS:
+        return _slot_builders(db, quotes, bot_username)[kind](now_ms)
+    query = db.query(Season).filter(Season.status == "finished")
+    if kind == "ai_move":
+        query = query.filter(Season.kind == SeasonKind.WEEK.value)
+    season = query.order_by(Season.ends_at.desc(), Season.id.desc()).first()
+    if season is None:
+        return None
+    if kind == "season":
+        return season_post(db, season, quotes, now_ms, bot_username)
+    return ai_move_post(db, season, now_ms, bot_username)

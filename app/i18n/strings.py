@@ -83,7 +83,8 @@ STRINGS: dict[str, dict[str, str]] = {
             "D1: {d1_kept}/{d1_total} · D7: {d7_kept}/{d7_total}\n"
             "Активных в неделе: {week_active}\nСделок сегодня: {trades_today}"
         ),
-        "admin.usage": "/admin · /admin ban|unban &lt;ник&gt; · /admin end|restart sprint|week",
+        "admin.usage": "/admin · /admin ban|unban &lt;ник&gt; · /admin end|restart sprint|week · /admin post morning|lesson|evening|season|ai_move",
+        "admin.post_empty": "Для этого поста пока нет данных.",
         "admin.banned": "{nickname} заблокирован.",
         "admin.unbanned": "{nickname} разблокирован.",
         "admin.not_found": "Игрок {nickname} не найден.",
@@ -210,7 +211,8 @@ STRINGS: dict[str, dict[str, str]] = {
             "D1: {d1_kept}/{d1_total} · D7: {d7_kept}/{d7_total}\n"
             "Active this week: {week_active}\nTrades today: {trades_today}"
         ),
-        "admin.usage": "/admin · /admin ban|unban &lt;nick&gt; · /admin end|restart sprint|week",
+        "admin.usage": "/admin · /admin ban|unban &lt;nick&gt; · /admin end|restart sprint|week · /admin post morning|lesson|evening|season|ai_move",
+        "admin.post_empty": "No data for this post yet.",
         "admin.banned": "{nickname} is banned.",
         "admin.unbanned": "{nickname} is unbanned.",
         "admin.not_found": "Player {nickname} not found.",

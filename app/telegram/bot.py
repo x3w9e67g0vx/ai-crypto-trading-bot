@@ -1,7 +1,7 @@
 """VEYDRANOX bot: `python -m app.telegram.bot`.
 
 The bot runs its own Binance feed (GAME_PRICE_FEED=0 turns it off) for /rank,
-notifications and admin season ends; a shared price worker comes in phase 7.
+notifications, channel posts (CHANNEL_ID) and admin season ends; a shared price worker comes in phase 7.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ from app.game.price_feed import BinanceFeed
 from app.game.quotes import QuoteBook
 from app.i18n.strings import t
 from app.telegram import admin, handlers
+from app.telegram.channel import run_channel
 from app.telegram.notifier import run_notifier
 
 logger = logging.getLogger(__name__)
@@ -97,6 +98,9 @@ async def main() -> None:
     await set_commands(bot)
 
     tasks = [asyncio.create_task(run_notifier(bot, SessionLocal, quotes))]
+    if settings.CHANNEL_ID:
+        channel_id = int(settings.CHANNEL_ID) if settings.CHANNEL_ID.lstrip("-").isdigit() else settings.CHANNEL_ID
+        tasks.append(asyncio.create_task(run_channel(bot, SessionLocal, quotes, channel_id, me.username or "")))
     feed = None
     if os.getenv("GAME_PRICE_FEED", "1").strip() != "0":
         feed = BinanceFeed(quotes)

@@ -9,9 +9,11 @@ from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 
 from app.game.admin import admin_stats, set_banned
+from app.game.channel import PREVIEW_KINDS, preview_post
 from app.game.config import SeasonKind
 from app.game.seasons import end_season_now
 from app.i18n.strings import normalize_lang, t
+from app.telegram.channel import send_post
 
 
 def is_admin(message: Message, admin_chat_id: int | None) -> bool:
@@ -23,7 +25,7 @@ def is_admin(message: Message, admin_chat_id: int | None) -> bool:
     )
 
 
-async def admin(message: Message, command: CommandObject, session_factory, quotes, clock) -> None:
+async def admin(message: Message, command: CommandObject, session_factory, quotes, clock, bot_username) -> None:
     lang = normalize_lang(message.from_user.language_code)
     args = (command.args or "").split()
     now_ms = clock()
@@ -46,6 +48,14 @@ async def admin(message: Message, command: CommandObject, session_factory, quote
             db.commit()
             text = t("admin.ended", lang=lang, old_id=old.id, kind=old.kind, new_id=new.id,
                      pending="" if done else t("admin.pending", lang=lang))
+        elif args[0] == "post" and len(args) == 2 and args[1] in PREVIEW_KINDS:
+            # A preview for the owner: nothing is recorded, the channel still gets it on schedule.
+            post = preview_post(db, quotes, args[1], now_ms, bot_username)
+            db.rollback()
+            if post is not None:
+                await send_post(message.bot, message.chat.id, post)
+                return
+            text = t("admin.post_empty", lang=lang)
         else:
             text = t("admin.usage", lang=lang)
     await message.answer(text)

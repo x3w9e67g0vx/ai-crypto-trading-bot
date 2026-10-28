@@ -194,3 +194,57 @@ def test_posts_end_with_disclaimer_and_link(db, build):
     text = build(db).text
     assert t("disclaimer", lang="ru") in text
     assert text.rstrip().endswith(f"https://t.me/{BOT}")
+
+
+DAY_START = NOW - NOW % DAY_MS
+HOUR = 60 * MINUTE
+
+
+def kinds(posts):
+    return [(post.kind, post.key) for post in posts]
+
+
+def test_due_posts_slots(db, quotes):
+    from app.game.channel import due_posts
+
+    add_candles(db, symbol="BTC/USDT", end_ms=DAY_START + 6 * HOUR)
+    assert kinds(due_posts(db, quotes, DAY_START + 6 * HOUR + MINUTE, BOT)) == [("morning", "2026-10-28")]
+    assert kinds(due_posts(db, quotes, DAY_START + 10 * HOUR + MINUTE, BOT)) == [("lesson", "2026-10-28")]
+    # Nobody traded: the evening post waits for data inside its window.
+    assert due_posts(db, quotes, DAY_START + 18 * HOUR + MINUTE, BOT) == []
+
+
+def test_due_posts_once(db, quotes):
+    from app.game.channel import due_posts
+    from app.game.models import ChannelPost
+
+    at = DAY_START + 10 * HOUR
+    assert kinds(due_posts(db, quotes, at, BOT)) == [("lesson", "2026-10-28")]
+    assert due_posts(db, quotes, at + MINUTE, BOT) == []
+    assert db.query(ChannelPost).count() == 1
+
+
+def test_slot_post_expires(db, quotes):
+    from app.game.channel import due_posts
+
+    add_candles(db, symbol="BTC/USDT", end_ms=DAY_START + 8 * HOUR)
+    assert due_posts(db, quotes, DAY_START + 8 * HOUR + MINUTE, BOT) == []
+    assert due_posts(db, quotes, DAY_START + 12 * HOUR, BOT) == []
+
+
+def test_season_posts_after_finish_only(db, quotes):
+    from app.game.channel import due_posts
+
+    week = make_season(db, at_ms=NOW - 7 * DAY_MS)
+    alice = make_player(db, telegram_id=1, nickname="alice")
+    ais = ensure_ai_players(db, NOW)
+    join(db, alice, week, cash=10_100.0)
+    closed(db, join(db, ais["lstm"], week), pnl=5.0)
+    quiet = week.ends_at + 3 * HOUR  # 03:00 UTC, no daily slot
+
+    assert due_posts(db, quotes, quiet, BOT) == []  # still active
+    week.status = "voided"
+    assert due_posts(db, quotes, quiet, BOT) == []
+    week.status = "finished"
+    assert due_posts(db, quotes, week.ends_at + 3 * DAY_MS, BOT) == []  # too late
+    assert kinds(due_posts(db, quotes, quiet, BOT)) == [("season", str(week.id)), ("ai_move", str(week.id))]
