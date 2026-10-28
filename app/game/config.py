@@ -63,3 +63,20 @@ NOTIFY_DAILY_CAP = 3
 SEASON_END_WARNING_MS = 60 * 60 * 1000
 # AI positions opened longer ago than this are not announced (e.g. after a bot restart).
 AI_OPEN_LOOKBACK_MS = 10 * 60 * 1000
+
+XP_PER_LESSON = 50
+XP_PER_TRADE = 10
+# XP needed to reach level 1, 2, ... 10.
+LEVEL_XP = (0, 100, 250, 450, 700, 1000, 1400, 1900, 2500, 3200)
+# Pairs opened on reaching a level; starter pairs are open from level 1.
+PAIR_UNLOCKS = {
+    2: ("BNB/USDT", "XRP/USDT"),
+    3: ("DOGE/USDT", "ADA/USDT"),
+    4: ("TRX/USDT", "AVAX/USDT"),
+    5: ("LINK/USDT", "TON/USDT"),
+    6: ("SUI/USDT", "DOT/USDT"),
+    7: ("LTC/USDT", "BCH/USDT"),
+    8: ("NEAR/USDT", "APT/USDT"),
+    9: ("PEPE/USDT", "SHIB/USDT"),
+    10: ("UNI/USDT",),
+}

@@ -236,3 +236,17 @@ class Event(Base):
     player_id = Column(Integer, ForeignKey("players.id"), nullable=False, index=True)
     kind = Column(String, nullable=False, index=True)
     created_at = Column(BigInteger, nullable=False, index=True)
+
+
+class LessonProgress(Base):
+    """A lesson the player has passed (answered its question correctly)."""
+
+    __tablename__ = "lesson_progress"
+    __table_args__ = (
+        UniqueConstraint("player_id", "lesson_id", name="uq_lesson_progress"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    player_id = Column(Integer, ForeignKey("players.id"), nullable=False, index=True)
+    lesson_id = Column(String, nullable=False)
+    completed_at = Column(BigInteger, nullable=False)

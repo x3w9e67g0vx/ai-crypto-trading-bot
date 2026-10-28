@@ -7,9 +7,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.game.analytics import log_event
-from app.game.config import STARTER_SYMBOLS
+from app.game.config import PAIR_UNLOCKS, STARTER_SYMBOLS
 from app.game.errors import InvalidNickname, NicknameTaken
 from app.game.models import Player
+from app.game.progress import level_for
 
 NICKNAME_RE = re.compile(r"[A-Za-zА-Яа-яЁё0-9_]{3,16}")
 
@@ -73,5 +74,10 @@ def validate_nickname(db: Session, player: Player, nickname: str) -> str:
 
 
 def unlocked_symbols(player: Player) -> tuple[str, ...]:
-    """Pairs the player may trade. Level-based unlocks arrive with lessons (phase 5)."""
-    return STARTER_SYMBOLS
+    """Pairs the player may trade: the starters plus those opened by levels reached."""
+    level = level_for(player.xp or 0)
+    symbols = list(STARTER_SYMBOLS)
+    for unlock_level in sorted(PAIR_UNLOCKS):
+        if unlock_level <= level:
+            symbols.extend(PAIR_UNLOCKS[unlock_level])
+    return tuple(symbols)

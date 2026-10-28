@@ -8,6 +8,7 @@ from app.game.config import (
     GAME_SYMBOLS,
     MAX_PAIR_SHARE,
     MAX_TRADES_PER_DAY,
+    XP_PER_TRADE,
 )
 from app.game.errors import (
     DailyTradeLimit,
@@ -21,6 +22,7 @@ from app.game.errors import (
     UnknownSymbol,
 )
 from app.game.models import Fill, Portfolio, Position, Season
+from app.game.progress import award_xp
 from app.game.quotes import QuoteBook
 
 SIDES = ("long", "short")
@@ -179,6 +181,7 @@ def close_position(
 
     portfolio.cash += proceeds
     portfolio.trades_count += 1
+    award_xp(portfolio.player, XP_PER_TRADE)
     position.closed_at = now_ms
     position.exit_price = price
     position.close_reason = reason
