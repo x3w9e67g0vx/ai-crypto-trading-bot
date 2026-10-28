@@ -12,6 +12,9 @@ from app.core.db.base import Base
 from app.core.db.dependencies import get_db
 from app.core.db.models import TelegramSubscription
 from app.core.db.session import engine
+from app.api.game_deps import game_error_handler
+from app.api.game_routes import router as game_router
+from app.game.errors import GameError
 from app.miniapp.dependencies import miniapp_auth
 from app.services.backtest_service import BacktestService
 from app.services.indicator_service import IndicatorService
@@ -30,6 +33,8 @@ from app.services.telegram_service import TelegramService
 
 app = FastAPI(title="AI Crypto Trading Bot")
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.include_router(game_router)
+app.add_exception_handler(GameError, game_error_handler)
 
 
 def _raise_http_error(

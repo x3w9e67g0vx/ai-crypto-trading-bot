@@ -42,3 +42,15 @@ class InvalidStops(GameError):
 
 class SeasonClosed(GameError):
     code = "season_closed"
+
+
+class SymbolLocked(GameError):
+    code = "symbol_locked"
+
+
+class InvalidNickname(GameError):
+    code = "invalid_nickname"
+
+
+class NicknameTaken(GameError):
+    code = "nickname_taken"

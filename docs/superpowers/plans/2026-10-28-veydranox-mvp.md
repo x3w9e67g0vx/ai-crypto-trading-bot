@@ -303,7 +303,7 @@
 - `app.game.players`: `get_or_create_player(db, tg_user: dict, now_ms) -> Player`; `validate_nickname(db, player, nickname) -> str`; `unlocked_symbols(player) -> tuple[str, ...]`.
 - `app.api.game_deps`: `get_quotes() -> QuoteBook` (модульный синглтон), `get_now_ms() -> int`, `current_player(auth=Depends(miniapp_auth), db, now_ms) -> Player` (бан → 403); `game_error_response` — exception handler `GameError` → JSON `{"status":"error","code"}`.
 - `GET /game/me` → `{player: {id, nickname, language, league_tier, xp, is_pro, needs_nickname, badges}, portfolios: {sprint, week}}`, портфель = `{season_id, starts_at, ends_at, cash, value, return_pct, trades, trades_today, trades_limit}`. `PATCH /game/me` `{nickname?, language?}`.
-- [ ] **Step 1: Тесты** `test_invalid_init_data_rejected` (RF1), `test_first_visit_creates_player_and_joins_both_seasons`, `test_me_is_idempotent`, `test_set_nickname_once`, `test_nickname_taken_case_insensitive_including_ai`, `test_invalid_nickname`, `test_language_switch`, `test_banned_player_forbidden`.
+- [ ] **Step 1: Тесты** `test_invalid_init_data_rejected` (RF1), `test_first_visit_creates_player_and_joins_both_seasons`, `test_me_is_idempotent`, `test_set_nickname_clears_needs_nickname`, `test_nickname_taken_case_insensitive_including_ai`, `test_invalid_nickname`, `test_language_switch`, `test_banned_player_forbidden`.
 - [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(api): add game api skeleton with player profile`.
 
 ### Task 17: Котировки и свечи
