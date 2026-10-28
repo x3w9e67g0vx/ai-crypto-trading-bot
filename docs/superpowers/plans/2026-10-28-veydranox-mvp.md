@@ -397,7 +397,7 @@
 - [x] **Step 1: Тесты** `test_start_shows_disclaimer_and_play_button`, `test_start_with_ref_records_referral`, `test_banned_player_gets_banned_text`, `test_rank_shows_both_seasons`, `test_settings_toggle`, `test_league_in_group_and_join_callback`, `test_private_commands_ignored_in_groups`, `test_admin_ignored_for_strangers` (RF3), `test_admin_stats_and_ban`, `test_admin_end_season`, `test_notifier_sends_and_survives_send_error`, `test_bot_strings_ru_en_keys_match`, `test_upgrade_drops_legacy_tables`; `import app.telegram.bot` не падает без токена.
 - [x] **Step 2–5:** FAIL → реализовать → PASS (весь `pytest`) → commit `feat(bot): rewrite bot for the game and drop legacy commands`.
 
-## Фаза 5 — Обучение (детально)
+## Фаза 5 — Обучение (детально) — ✅ выполнена, 213 тестов всего
 
 **Решения строителя (спека §6 оставила их строителю):**
 - **Уроки** — `content/lessons/{ru,en}/NN-slug.md`, один файл на урок и язык. Шапка между `---` в формате `ключ: значение`: `id` (`01`…`10`), `title`, `question`, `options` (варианты через ` | `), `answer` (номер верного варианта с 0). Тело — ограниченный markdown: `## заголовок`, абзацы, `- пункт`, `**жирный**`. Сервер разбирает тело в блоки `{"type": "h"|"p"|"li", "text"}`, клиент экранирует текст и подсвечивает `**…**`. Черновики 10 уроков пишет Claude, пользователь их вычитывает (спека §3 и §4.6).
@@ -422,40 +422,40 @@
 ### Task 29: Прогресс уроков, XP и уровни
 **Files:** Modify `app/game/models.py` (`LessonProgress(player_id, lesson_id, completed_at)`, unique pair), `app/game/config.py` (`XP_PER_LESSON`, `XP_PER_TRADE`, `LEVEL_XP`, `PAIR_UNLOCKS: dict[int, tuple[str, ...]]`), `app/game/players.py` (`unlocked_symbols` по уровню), `app/game/trading.py` (`close_position` начисляет XP не-ИИ); Create `app/game/progress.py`, `alembic/versions/0004_lesson_progress.py`; Test `tests/game/test_progress.py`, `tests/game/test_config.py`, `tests/test_migrations.py`
 **Interfaces:** `level_for(xp) -> int`; `level_info(xp) -> LevelInfo(level, level_xp, next_level_xp, next_unlocks)`; `award_xp(player, amount) -> None`.
-- [ ] **Step 1: Тесты** `test_level_thresholds` (0→1, 99→1, 100→2, 3200→10, 10**6→10), `test_unlocks_by_level` (уровень 1 = STARTER_SYMBOLS; уровень 3 + BNB, XRP, DOGE, ADA), `test_pair_unlocks_cover_game_symbols` (каждая нестартовая пара ровно один раз, ключи 2…10), `test_close_awards_trade_xp`, `test_ai_close_awards_no_xp`, `test_lesson_progress_unique`.
-- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(game): add xp levels and pair unlocks`.
+- [x] **Step 1: Тесты** `test_level_thresholds` (0→1, 99→1, 100→2, 3200→10, 10**6→10), `test_unlocks_by_level` (уровень 1 = STARTER_SYMBOLS; уровень 3 + BNB, XRP, DOGE, ADA), `test_pair_unlocks_cover_game_symbols` (каждая нестартовая пара ровно один раз, ключи 2…10), `test_close_awards_trade_xp`, `test_ai_close_awards_no_xp`, `test_lesson_progress_unique`.
+- [x] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(game): add xp levels and pair unlocks`.
 
 ### Task 30: Уроки — загрузчик и контент
 **Files:** Create `app/game/lessons.py`, `content/lessons/{ru,en}/01..10-*.md`; Test `tests/game/test_lessons.py`
 **Interfaces:** `Lesson(id, lang, title, blocks: tuple[dict, ...], question, options: tuple[str, ...], answer: int)`; `load_lessons(root: Path = LESSONS_DIR) -> dict[str, dict[str, Lesson]]` (lang → id → Lesson, порядок по id); `get_lessons(lang) -> list[Lesson]` (кэш); `parse_body(text) -> tuple[dict, ...]`.
-- [ ] **Step 1: Тесты** `test_parse_body_blocks` (h/p/li, абзацы через пустую строку), `test_shipped_lessons_complete` (ru и en — одинаковые 10 id `01`…`10`, у каждого ≥ 2 вариантов, `0 <= answer < len(options)`, непустые блоки), `test_bad_frontmatter_raises` (`ValueError`).
-- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(learn): add lessons loader and ten lessons`.
+- [x] **Step 1: Тесты** `test_parse_body_blocks` (h/p/li, абзацы через пустую строку), `test_shipped_lessons_complete` (ru и en — одинаковые 10 id `01`…`10`, у каждого ≥ 2 вариантов, `0 <= answer < len(options)`, непустые блоки), `test_bad_frontmatter_raises` (`ValueError`).
+- [x] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(learn): add lessons loader and ten lessons`.
 
 ### Task 31: Прохождение урока
 **Files:** Modify `app/game/progress.py`, `app/game/errors.py` (`WrongAnswer`, `LessonNotFound`); Test `tests/game/test_progress.py`
 **Interfaces:** `completed_lessons(db, player) -> set[str]`; `complete_lesson(db, player, lesson, answer, now_ms) -> int` (начисленный XP; неверно → `WrongAnswer`).
-- [ ] **Step 1: Тесты** `test_complete_awards_xp_and_logs_event`, `test_complete_twice_awards_once` (RF1), `test_wrong_answer_raises_without_progress`.
-- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(learn): complete lessons for xp`.
+- [x] **Step 1: Тесты** `test_complete_awards_xp_and_logs_event`, `test_complete_twice_awards_once` (RF1), `test_wrong_answer_raises_without_progress`.
+- [x] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(learn): complete lessons for xp`.
 
 ### Task 32: Индикаторы, микроуроки, разбор сделки
 **Files:** Create `app/game/insights.py`; Test `tests/game/test_insights.py`
 **Interfaces:** `Indicators(rsi: float | None, ema_fast, ema_slow, trend: str)`; `indicators_at(db, symbol, ts_ms) -> Indicators | None`; `order_tips(db, player, position, indicators, value_before, now_ms) -> list[dict]`; `trade_review(db, viewer, position, now_ms) -> dict`.
-- [ ] **Step 1: Тесты** `test_indicators_from_closed_candles`, `test_indicators_none_without_fresh_candles` (RF4), `test_tip_rules` (каждое правило), `test_tips_capped_and_once_per_day` (RF5), `test_review_result_and_notes`, `test_review_ai_opinions_at_entry`, `test_review_hides_fresh_ai_opinions_for_free` (RF3), `test_review_without_candles` (RF4).
-- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(learn): add micro lessons and trade reviews`.
+- [x] **Step 1: Тесты** `test_indicators_from_closed_candles`, `test_indicators_none_without_fresh_candles` (RF4), `test_tip_rules` (каждое правило), `test_tips_capped_and_once_per_day` (RF5), `test_review_result_and_notes`, `test_review_ai_opinions_at_entry`, `test_review_hides_fresh_ai_opinions_for_free` (RF3), `test_review_without_candles` (RF4).
+- [x] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(learn): add micro lessons and trade reviews`.
 
 ### Task 33: API обучения
 **Files:** Modify `app/api/game_routes.py`; Test `tests/api/test_lessons.py`, `tests/api/test_orders.py`, `tests/api/test_me.py`
-- [ ] **Step 1: Тесты** `test_lessons_list_in_player_language`, `test_lesson_detail_hides_answer`, `test_complete_lesson_api_idempotent` (RF1), `test_wrong_answer_rejected`, `test_unknown_lesson_404`, `test_me_has_level`, `test_order_returns_tips`, `test_level_unlocks_trading_pair`, `test_review_own_closed_position`, `test_review_foreign_or_open_is_404` (RF2).
-- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(api): add lessons, tips and trade review endpoints`.
+- [x] **Step 1: Тесты** `test_lessons_list_in_player_language`, `test_lesson_detail_hides_answer`, `test_complete_lesson_api_idempotent` (RF1), `test_wrong_answer_rejected`, `test_unknown_lesson_404`, `test_me_has_level`, `test_order_returns_tips`, `test_level_unlocks_trading_pair`, `test_review_own_closed_position`, `test_review_foreign_or_open_is_404` (RF2).
+- [x] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(api): add lessons, tips and trade review endpoints`.
 
 ### Task 34: `/learn` в боте
 **Files:** Modify `app/telegram/handlers.py`, `app/telegram/views.py`, `app/i18n/strings.py` (удалить `learn.soon`); Test `tests/telegram/test_handlers.py`
-- [ ] **Step 1: Тесты** `test_learn_lists_lessons_with_progress` (✅ у пройденного, уровень, кнопка WebApp с `#learn`), `test_learn_without_miniapp_url`.
-- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(bot): show lessons in learn`.
+- [x] **Step 1: Тесты** `test_learn_lists_lessons_with_progress` (✅ у пройденного, уровень, кнопка WebApp с `#learn`), `test_learn_without_miniapp_url`.
+- [x] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(bot): show lessons in learn`.
 
 ### Task 35: Mini App — уроки, уровень, подсказки, разбор
 **Files:** Modify `static/miniapp/app.js`, `static/miniapp/style.css`, `static/miniapp/i18n.json`; Test `tests/api/test_miniapp_i18n.py` (`test_i18n_covers_tips_and_notes` — у каждого кода подсказки и вывода разбора есть строки RU/EN)
-- [ ] **Step 1–5:** тест FAIL → вкладка уроков, прогресс в профиле, тост подсказки, экран разбора → PASS → ручная проверка `node --check` → commit `feat(miniapp): lessons, levels, tips and reviews`.
+- [x] **Step 1–5:** тест FAIL → вкладка уроков, прогресс в профиле, тост подсказки, экран разбора → PASS → ручная проверка `node --check` → commit `feat(miniapp): lessons, levels, tips and reviews`.
 
 ## Фазы 2–7 — дорожная карта (детальный план на каждую — перед стартом фазы)
 
