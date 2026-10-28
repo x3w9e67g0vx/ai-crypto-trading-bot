@@ -397,6 +397,66 @@
 - [x] **Step 1: Тесты** `test_start_shows_disclaimer_and_play_button`, `test_start_with_ref_records_referral`, `test_banned_player_gets_banned_text`, `test_rank_shows_both_seasons`, `test_settings_toggle`, `test_league_in_group_and_join_callback`, `test_private_commands_ignored_in_groups`, `test_admin_ignored_for_strangers` (RF3), `test_admin_stats_and_ban`, `test_admin_end_season`, `test_notifier_sends_and_survives_send_error`, `test_bot_strings_ru_en_keys_match`, `test_upgrade_drops_legacy_tables`; `import app.telegram.bot` не падает без токена.
 - [x] **Step 2–5:** FAIL → реализовать → PASS (весь `pytest`) → commit `feat(bot): rewrite bot for the game and drop legacy commands`.
 
+## Фаза 5 — Обучение (детально)
+
+**Решения строителя (спека §6 оставила их строителю):**
+- **Уроки** — `content/lessons/{ru,en}/NN-slug.md`, один файл на урок и язык. Шапка между `---` в формате `ключ: значение`: `id` (`01`…`10`), `title`, `question`, `options` (варианты через ` | `), `answer` (номер верного варианта с 0). Тело — ограниченный markdown: `## заголовок`, абзацы, `- пункт`, `**жирный**`. Сервер разбирает тело в блоки `{"type": "h"|"p"|"li", "text"}`, клиент экранирует текст и подсвечивает `**…**`. Черновики 10 уроков пишет Claude, пользователь их вычитывает (спека §3 и §4.6).
+- **Темы уроков:** 01 биржа: bid/ask, спред, комиссия; 02 лонг и шорт; 03 размер позиции и риск; 04 стоп-лосс и тейк-профит; 05 свечи и таймфреймы; 06 тренд и EMA; 07 RSI: перекупленность и перепроданность; 08 MACD; 09 психология: FOMO, отыгрыш, овертрейдинг; 10 как думают ИИ-модели и почему они ошибаются.
+- **Урок засчитывается** после верного ответа на один вопрос. Все уроки открыты сразу, порядок не обязателен. Неверный ответ → `WrongAnswer` (400) без штрафа. Повторное прохождение даёт 0 XP. Пишется событие `lesson_done`.
+- **XP:** урок — 50 (один раз), закрытая позиция игрока — 10 (по любой причине, в том числе SL/TP и конец сезона; у ИИ XP нет). XP не убывает.
+- **Уровни:** `LEVEL_XP = (0, 100, 250, 450, 700, 1000, 1400, 1900, 2500, 3200)`, уровень 1…10. **Открытие пар:** 2 — BNB, XRP; 3 — DOGE, ADA; 4 — TRX, AVAX; 5 — LINK, TON; 6 — SUI, DOT; 7 — LTC, BCH; 8 — NEAR, APT; 9 — PEPE, SHIB; 10 — UNI. Pro пары не открывает. Открытая пара остаётся открытой.
+- **Индикаторы для подсказок и разборов** — `indicators_at(db, symbol, ts)`: закрытые к `ts` 5m-свечи (до 100 штук) из `candles`, `IndicatorService.calculate_indicators`. Даёт RSI14, EMA12/EMA26 и тренд (`up`, если EMA12 > EMA26). Если свечей < 30 или последняя закрылась больше 15 мин назад — `None`, и подсказки/блок индикаторов пропускаются.
+- **Микроуроки** приходят в ответе `POST /game/orders` как `tips: [{"code", "lesson_id"}]`, максимум 2, в порядке приоритета: `overbought_buy` (лонг при RSI > 70 → урок 07), `oversold_short` (шорт при RSI < 30 → 07), `against_trend` (лонг при тренде down / шорт при up → 06), `no_stop` (нет SL → 04), `big_position` (резерв > 25% стоимости портфеля до сделки → 03). Каждая подсказка показывается игроку не чаще раза в UTC-сутки (`log_event(kind="tip_<code>", once_per_day=True)`). Сбой подсказок не ломает уже закоммиченный ордер.
+- **Разбор закрытой сделки** собирается по запросу, отдельно не хранится: `GET /game/positions/{id}/review` (только своя закрытая позиция, иначе 404). Состав: итог (pnl, pnl % от резерва, длительность, причина закрытия), индикаторы на входе и выходе, мнения ИИ на входе (только BTC/ETH/SOL: по каждому персонажу последнее `AiDecision` с `created_at <= opened_at`; для не-Pro ещё и `created_at <= now − 1 ч`, то есть та же задержка, что у `ai_decisions_view`), выводы `notes` — коды для i18n: `entry_overbought`, `entry_oversold`, `against_trend`, `with_trend`, `stopped_out`, `took_profit`, `season_end`, `no_stop_loss` (убыток и не было SL), `with_ai` / `against_ai` (направление совпало / не совпало с большинством мнений не `neutral`).
+- **API:** `GET /game/lessons` (список: id, title, done, xp), `GET /game/lessons/{id}` (блоки, вопрос, варианты — без ответа), `POST /game/lessons/{id}/complete {answer}` → `{xp_awarded, player}`. Язык — `Player.language`. `/game/me` → `player.level`, `level_xp`, `next_level_xp` (None на 10-м), `next_unlocks`.
+- **Бот `/learn`:** уровень, XP, список уроков с ✅ и кнопка «Открыть уроки» (WebApp на `MINIAPP_URL#learn`). Без URL — только текст.
+- **Mini App:** вкладка «Уроки» (список → урок → вопрос; после верного ответа тост с XP), прогресс уровня в профиле, тост с микроуроком после ордера (кнопка ведёт в урок), кнопка «Разбор» у закрытых позиций, ссылка `#learn` открывает вкладку уроков.
+
+**Review Focus фазы 5:**
+1. **Повторное прохождение урока / двойной клик** — ожидание: XP один раз, второй вызов → `xp_awarded: 0`. Тесты: `test_complete_twice_awards_once` (Task 31), `test_complete_lesson_api_idempotent` (Task 33).
+2. **Разбор чужой или открытой позиции** — ожидание: 404, данные не утекают. Тест: `test_review_foreign_or_open_is_404` (Task 33).
+3. **Мнение ИИ в разборе раньше, чем его можно видеть** — ожидание: для не-Pro решения младше 1 ч не показываются. Тест: `test_review_hides_fresh_ai_opinions_for_free` (Task 32).
+4. **Нет свечей / свечи устарели** — ожидание: ордер проходит, подсказки по индикаторам не выдаются, разбор отдаётся без блока индикаторов. Тесты: `test_indicators_none_without_fresh_candles`, `test_review_without_candles` (Task 32).
+5. **Спам подсказками** — ожидание: ≤ 2 на ордер, одна и та же — не чаще раза в сутки. Тест: `test_tips_capped_and_once_per_day` (Task 32).
+
+### Task 29: Прогресс уроков, XP и уровни
+**Files:** Modify `app/game/models.py` (`LessonProgress(player_id, lesson_id, completed_at)`, unique pair), `app/game/config.py` (`XP_PER_LESSON`, `XP_PER_TRADE`, `LEVEL_XP`, `PAIR_UNLOCKS: dict[int, tuple[str, ...]]`), `app/game/players.py` (`unlocked_symbols` по уровню), `app/game/trading.py` (`close_position` начисляет XP не-ИИ); Create `app/game/progress.py`, `alembic/versions/0004_lesson_progress.py`; Test `tests/game/test_progress.py`, `tests/game/test_config.py`, `tests/test_migrations.py`
+**Interfaces:** `level_for(xp) -> int`; `level_info(xp) -> LevelInfo(level, level_xp, next_level_xp, next_unlocks)`; `award_xp(player, amount) -> None`.
+- [ ] **Step 1: Тесты** `test_level_thresholds` (0→1, 99→1, 100→2, 3200→10, 10**6→10), `test_unlocks_by_level` (уровень 1 = STARTER_SYMBOLS; уровень 3 + BNB, XRP, DOGE, ADA), `test_pair_unlocks_cover_game_symbols` (каждая нестартовая пара ровно один раз, ключи 2…10), `test_close_awards_trade_xp`, `test_ai_close_awards_no_xp`, `test_lesson_progress_unique`.
+- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(game): add xp levels and pair unlocks`.
+
+### Task 30: Уроки — загрузчик и контент
+**Files:** Create `app/game/lessons.py`, `content/lessons/{ru,en}/01..10-*.md`; Test `tests/game/test_lessons.py`
+**Interfaces:** `Lesson(id, lang, title, blocks: tuple[dict, ...], question, options: tuple[str, ...], answer: int)`; `load_lessons(root: Path = LESSONS_DIR) -> dict[str, dict[str, Lesson]]` (lang → id → Lesson, порядок по id); `get_lessons(lang) -> list[Lesson]` (кэш); `parse_body(text) -> tuple[dict, ...]`.
+- [ ] **Step 1: Тесты** `test_parse_body_blocks` (h/p/li, абзацы через пустую строку), `test_shipped_lessons_complete` (ru и en — одинаковые 10 id `01`…`10`, у каждого ≥ 2 вариантов, `0 <= answer < len(options)`, непустые блоки), `test_bad_frontmatter_raises` (`ValueError`).
+- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(learn): add lessons loader and ten lessons`.
+
+### Task 31: Прохождение урока
+**Files:** Modify `app/game/progress.py`, `app/game/errors.py` (`WrongAnswer`, `LessonNotFound`); Test `tests/game/test_progress.py`
+**Interfaces:** `completed_lessons(db, player) -> set[str]`; `complete_lesson(db, player, lesson, answer, now_ms) -> int` (начисленный XP; неверно → `WrongAnswer`).
+- [ ] **Step 1: Тесты** `test_complete_awards_xp_and_logs_event`, `test_complete_twice_awards_once` (RF1), `test_wrong_answer_raises_without_progress`.
+- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(learn): complete lessons for xp`.
+
+### Task 32: Индикаторы, микроуроки, разбор сделки
+**Files:** Create `app/game/insights.py`; Test `tests/game/test_insights.py`
+**Interfaces:** `Indicators(rsi: float | None, ema_fast, ema_slow, trend: str)`; `indicators_at(db, symbol, ts_ms) -> Indicators | None`; `order_tips(db, player, position, indicators, value_before, now_ms) -> list[dict]`; `trade_review(db, viewer, position, now_ms) -> dict`.
+- [ ] **Step 1: Тесты** `test_indicators_from_closed_candles`, `test_indicators_none_without_fresh_candles` (RF4), `test_tip_rules` (каждое правило), `test_tips_capped_and_once_per_day` (RF5), `test_review_result_and_notes`, `test_review_ai_opinions_at_entry`, `test_review_hides_fresh_ai_opinions_for_free` (RF3), `test_review_without_candles` (RF4).
+- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(learn): add micro lessons and trade reviews`.
+
+### Task 33: API обучения
+**Files:** Modify `app/api/game_routes.py`; Test `tests/api/test_lessons.py`, `tests/api/test_orders.py`, `tests/api/test_me.py`
+- [ ] **Step 1: Тесты** `test_lessons_list_in_player_language`, `test_lesson_detail_hides_answer`, `test_complete_lesson_api_idempotent` (RF1), `test_wrong_answer_400`, `test_unknown_lesson_404`, `test_me_has_level`, `test_order_returns_tips`, `test_level_unlocks_trading_pair`, `test_review_own_closed_position`, `test_review_foreign_or_open_is_404` (RF2).
+- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(api): add lessons, tips and trade review endpoints`.
+
+### Task 34: `/learn` в боте
+**Files:** Modify `app/telegram/handlers.py`, `app/telegram/views.py`, `app/i18n/strings.py` (удалить `learn.soon`); Test `tests/telegram/test_handlers.py`
+- [ ] **Step 1: Тесты** `test_learn_lists_lessons_with_progress` (✅ у пройденного, уровень, кнопка WebApp с `#learn`), `test_learn_without_miniapp_url`.
+- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(bot): show lessons in learn`.
+
+### Task 35: Mini App — уроки, уровень, подсказки, разбор
+**Files:** Modify `static/miniapp/app.js`, `static/miniapp/style.css`, `static/miniapp/i18n.json`; Test `tests/api/test_miniapp_i18n.py` (`test_i18n_covers_tips_and_notes` — у каждого кода подсказки и вывода разбора есть строки RU/EN)
+- [ ] **Step 1–5:** тест FAIL → вкладка уроков, прогресс в профиле, тост подсказки, экран разбора → PASS → ручная проверка `node --check` → commit `feat(miniapp): lessons, levels, tips and reviews`.
+
 ## Фазы 2–7 — дорожная карта (детальный план на каждую — перед стартом фазы)
 
 **Фаза 2 — ИИ-персонажи.** `app/game/ai_personas.py`: три `Player(is_ai=True)` (`lstm` агрессивный 0.55/0.45, 40%, SL 3%/TP 6%; `random_forest` осторожный 0.65/0.35, 15%, SL 1.5%/TP 3%; `logistic_regression` новичок 0.55/0.45, 25%, без трендового фильтра); решение на закрытии каждой 5m-свечи BTC/ETH/SOL через `open_position(..., is_user=True)` — те же лимиты. Исправить сохранение RF/LogReg: отдельный файл на символ. Дефолтный бэктест → out-of-sample. Задержка видимости позиций ИИ 1 ч для не-Pro.
