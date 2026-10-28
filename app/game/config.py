@@ -44,6 +44,8 @@ GAME_SYMBOLS = STARTER_SYMBOLS + (
 # their models were trained on.
 AI_SYMBOLS = STARTER_SYMBOLS
 AI_TIMEFRAME = "5m"
+# Mini App chart candles.
+CHART_TIMEFRAME = "5m"
 AI_MIN_ORDER_USDT = 10.0
 # Free players see AI positions as they were this long ago.
 AI_VISIBILITY_DELAY_MS = 60 * 60 * 1000

@@ -2,16 +2,25 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.game_deps import current_player, get_now_ms, get_quotes
 from app.core.db.dependencies import get_db
+from app.core.db.models import Candle
 from app.game.ai_view import is_pro
-from app.game.config import MAX_TRADES_PER_DAY, STARTING_BALANCE, SeasonKind
+from app.game.config import (
+    CHART_TIMEFRAME,
+    GAME_SYMBOLS,
+    MAX_TRADES_PER_DAY,
+    STALE_AFTER_MS,
+    STARTING_BALANCE,
+    SeasonKind,
+)
+from app.game.errors import UnknownSymbol
 from app.game.models import Badge, Player, Portfolio
-from app.game.players import validate_nickname
+from app.game.players import unlocked_symbols, validate_nickname
 from app.game.quotes import QuoteBook
 from app.game.seasons import ensure_current_season, join_season
 from app.game.trading import portfolio_value, user_trades_today
@@ -97,3 +106,54 @@ def update_me(
         player.language = update.language
     db.commit()
     return _me_json(db, player, quotes, now_ms)
+
+
+def _quote_json(symbol: str, quotes: QuoteBook, now_ms: int) -> dict:
+    quote = quotes.last(symbol)
+    if quote is None:
+        return {"symbol": symbol, "bid": None, "ask": None, "ts": None, "fresh": False}
+    return {
+        "symbol": symbol,
+        "bid": quote.bid,
+        "ask": quote.ask,
+        "ts": quote.ts,
+        "fresh": quotes.is_fresh(symbol, now_ms),
+    }
+
+
+@router.get("/quotes")
+def get_market_quotes(
+    player: Player = Depends(current_player),
+    quotes: QuoteBook = Depends(get_quotes),
+    now_ms: int = Depends(get_now_ms),
+) -> dict:
+    symbols = unlocked_symbols(player)
+    last_update = quotes.last_update_ms()
+    return {
+        "source": "binance",
+        "exchange_down": last_update is None or now_ms - last_update > STALE_AFTER_MS,
+        "symbols": list(symbols),
+        "quotes": [_quote_json(symbol, quotes, now_ms) for symbol in symbols],
+    }
+
+
+@router.get("/candles")
+def get_candles(
+    symbol: str,
+    limit: int = Query(default=300, ge=1, le=1000),
+    player: Player = Depends(current_player),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    if symbol not in GAME_SYMBOLS:
+        raise UnknownSymbol(symbol)
+    rows = (
+        db.query(Candle)
+        .filter_by(symbol=symbol, timeframe=CHART_TIMEFRAME)
+        .order_by(Candle.timestamp.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        {"time": row.timestamp // 1000, "open": row.open, "high": row.high, "low": row.low, "close": row.close}
+        for row in reversed(rows)
+    ]
