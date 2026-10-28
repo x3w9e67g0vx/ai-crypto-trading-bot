@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.game.config import AI_VISIBILITY_DELAY_MS
-from app.game.models import Player, Portfolio, Position
+from app.game.models import AiDecision, Player, Portfolio, Position
 
 
 def is_pro(player: Player, now_ms: int) -> bool:
@@ -24,3 +24,11 @@ def ai_positions_view(db: Session, viewer: Player, ai_portfolio: Portfolio, now_
         .order_by(Position.opened_at)
         .all()
     )
+
+
+def ai_decisions_view(db: Session, viewer: Player, ai_player: Player, now_ms: int, *, limit: int = 20) -> list[AiDecision]:
+    """Latest AI opinions the viewer may see, newest first, with the same delay as positions."""
+    query = db.query(AiDecision).filter(AiDecision.player_id == ai_player.id)
+    if not is_pro(viewer, now_ms):
+        query = query.filter(AiDecision.created_at <= now_ms - AI_VISIBILITY_DELAY_MS)
+    return query.order_by(AiDecision.created_at.desc(), AiDecision.id.desc()).limit(limit).all()

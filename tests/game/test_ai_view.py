@@ -1,6 +1,6 @@
 from app.game.ai_personas import ensure_ai_players
-from app.game.ai_view import ai_positions_view, is_pro
-from app.game.models import Position
+from app.game.ai_view import ai_decisions_view, ai_positions_view, is_pro
+from app.game.models import AiDecision, Position
 from app.game.seasons import join_season
 from tests.game.conftest import NOW, make_player, make_season
 
@@ -57,3 +57,39 @@ def test_expired_pro_is_free(db):
 
     assert not is_pro(viewer, NOW)
     assert symbols(ai_positions_view(db, viewer, portfolio, NOW)) == ["BTC/USDT", "ETH/USDT"]
+
+
+def ai_with_decisions(db):
+    lstm = ensure_ai_players(db, NOW)["lstm"]
+    for minutes_ago in (180, 61, 59, 5):
+        db.add(
+            AiDecision(
+                player_id=lstm.id,
+                symbol="BTC/USDT",
+                candle_ts=NOW - minutes_ago * MINUTE - 5 * MINUTE,
+                probability_up=0.6,
+                view="bullish",
+                created_at=NOW - minutes_ago * MINUTE,
+            )
+        )
+    db.flush()
+    return lstm
+
+
+def ages(decisions):
+    return [(NOW - decision.created_at) // MINUTE for decision in decisions]
+
+
+def test_free_viewer_sees_decisions_one_hour_ago(db):
+    lstm = ai_with_decisions(db)
+    viewer = make_player(db)
+
+    assert ages(ai_decisions_view(db, viewer, lstm, NOW)) == [61, 180]
+    assert ages(ai_decisions_view(db, viewer, lstm, NOW, limit=1)) == [61]
+
+
+def test_pro_viewer_sees_all_decisions(db):
+    lstm = ai_with_decisions(db)
+    viewer = make_player(db, is_pro_until=NOW + MINUTE)
+
+    assert ages(ai_decisions_view(db, viewer, lstm, NOW)) == [5, 59, 61, 180]

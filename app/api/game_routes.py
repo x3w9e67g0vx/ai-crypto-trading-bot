@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 from app.api.game_deps import current_player, get_now_ms, get_quotes
 from app.core.db.dependencies import get_db
 from app.core.db.models import Candle
-from app.game.ai_view import is_pro
+from app.game.ai_personas import PERSONAS
+from app.game.ai_view import ai_decisions_view, ai_positions_view, is_pro
 from app.game.config import (
     CHART_TIMEFRAME,
     FEE_RATE,
@@ -21,7 +22,8 @@ from app.game.config import (
     SeasonKind,
 )
 from app.game.errors import PositionExists, PositionNotFound, SymbolLocked, UnknownSymbol
-from app.game.models import Badge, Player, Portfolio, Position
+from app.game.leaderboard import standings
+from app.game.models import Badge, LeagueGroup, LeagueMembership, Player, Portfolio, Position
 from app.game.players import unlocked_symbols, validate_nickname
 from app.game.quotes import QuoteBook
 from app.game.seasons import ensure_current_season, join_season
@@ -273,3 +275,101 @@ def list_positions(
     else:
         query = query.filter(Position.closed_at.isnot(None)).order_by(Position.closed_at.desc())
     return [_position_json(position, quotes) for position in query.all()]
+
+
+LEADERBOARD_TOP = 100
+
+
+@router.get("/leaderboard")
+def get_leaderboard(
+    season: SeasonParam,
+    player: Player = Depends(current_player),
+    db: Session = Depends(get_db),
+    quotes: QuoteBook = Depends(get_quotes),
+    now_ms: int = Depends(get_now_ms),
+) -> dict:
+    """Week: the player's league group (AI ghosts included); sprint: everyone."""
+    portfolio = current_portfolio(db, player, season, now_ms)
+    db.commit()
+    group = (
+        db.query(LeagueGroup)
+        .join(LeagueMembership, LeagueMembership.group_id == LeagueGroup.id)
+        .filter(LeagueMembership.portfolio_id == portfolio.id)
+        .one_or_none()
+    )
+    portfolio_ids = None
+    if group is not None:
+        portfolio_ids = [row.portfolio_id for row in db.query(LeagueMembership.portfolio_id).filter_by(group_id=group.id)]
+    table = standings(db, portfolio.season, quotes, now_ms, portfolio_ids=portfolio_ids)
+
+    rows = [
+        {
+            "rank": row.rank,
+            "nickname": row.nickname,
+            "is_ai": row.is_ai,
+            "return_pct": row.return_pct,
+            "trades": row.trades,
+            "qualified": row.qualified,
+            "is_me": row.portfolio_id == portfolio.id,
+        }
+        for row in table
+    ]
+    shown = rows[:LEADERBOARD_TOP] + [row for row in rows[LEADERBOARD_TOP:] if row["is_me"]]
+    return {
+        "season_id": portfolio.season_id,
+        "scope": "group" if group is not None else "global",
+        "tier": group.tier if group is not None else None,
+        "rows": shown,
+    }
+
+
+@router.get("/ai")
+def get_ai_players(
+    season: SeasonParam,
+    player: Player = Depends(current_player),
+    db: Session = Depends(get_db),
+    quotes: QuoteBook = Depends(get_quotes),
+    now_ms: int = Depends(get_now_ms),
+) -> list[dict]:
+    """AI personas with positions and opinions, delayed for non-Pro viewers."""
+    season_row = ensure_current_season(db, SeasonKind(season), now_ms)
+    db.commit()
+    ai_players = {row.ai_key: row for row in db.query(Player).filter_by(is_ai=True)}
+    result = []
+    for persona in PERSONAS:
+        ai_player = ai_players.get(persona.key)
+        if ai_player is None:
+            continue
+        portfolio = db.query(Portfolio).filter_by(player_id=ai_player.id, season_id=season_row.id).one_or_none()
+        positions = ai_positions_view(db, player, portfolio, now_ms) if portfolio is not None else []
+        value = portfolio_value(portfolio, quotes, now_ms, allow_stale=True) if portfolio is not None else STARTING_BALANCE
+        result.append(
+            {
+                "key": persona.key,
+                "nickname": ai_player.nickname,
+                "return_pct": (value / STARTING_BALANCE - 1) * 100,
+                "delayed": not is_pro(player, now_ms),
+                "positions": [
+                    {
+                        "symbol": position.symbol,
+                        "side": position.side,
+                        "entry_price": position.entry_price,
+                        "stop_loss": position.stop_loss,
+                        "take_profit": position.take_profit,
+                        "opened_at": position.opened_at,
+                    }
+                    for position in positions
+                ],
+                "decisions": [
+                    {
+                        "symbol": decision.symbol,
+                        "candle_ts": decision.candle_ts,
+                        "probability_up": decision.probability_up,
+                        "view": decision.view,
+                        "created_at": decision.created_at,
+                    }
+                    for decision in ai_decisions_view(db, player, ai_player, now_ms)
+                ],
+            }
+        )
+    return result
