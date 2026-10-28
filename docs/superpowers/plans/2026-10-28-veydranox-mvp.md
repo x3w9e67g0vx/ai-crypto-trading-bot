@@ -269,6 +269,72 @@
 - [x] **Step 1: Тесты** `test_free_viewer_sees_state_one_hour_ago` (RF5), `test_pro_viewer_sees_live`, `test_expired_pro_is_free`.
 - [x] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(game): delay ai positions for free players`.
 
+## Фаза 3 — API + Mini App (детально)
+
+**Решения строителя (не из спеки):**
+- Котировки живут в процессе API: при старте (lifespan) запускается `BinanceFeed` в общий `QuoteBook` (`GAME_PRICE_FEED=0` отключает — тесты, локальная отладка). Отдельный воркер цен и `check_stops` по расписанию — фаза 7.
+- Игрок создаётся при первом запросе с валидным initData: ник — `username` из Telegram, иначе `first_name`, иначе `player{id}`; язык — `language_code` (`ru*` → ru, иначе en). `needs_nickname=True`, пока игрок не подтвердил ник через `PATCH /game/me` (новое поле `Player.nickname_set`).
+- Ник: 3–16 символов `[A-Za-zА-Яа-яЁё0-9_]`, уникален без учёта регистра среди всех игроков, включая ИИ («LSTM» занять нельзя) → `nickname_taken` / `invalid_nickname`.
+- `GET /game/me` сам вводит игрока в текущие спринт и неделю (`join_season` идемпотентен) — отдельной кнопки «вступить» нет.
+- Ошибки: `GameError` → 409 `{"code"}`, `StaleQuote` → 503, чужая/несуществующая позиция → 404 `position_not_found`, бан → 403 `banned`. Фронт переводит по `code`.
+- Пары: торговать можно только `unlocked_symbols(player)` (сейчас = `STARTER_SYMBOLS`; уровни — фаза 5), иначе `SymbolLocked` (`symbol_locked`).
+- График: `GET /game/candles` из таблицы `candles` (5m, время в секундах для `lightweight-charts`); последняя свеча на фронте дорисовывается по mid из `/game/quotes` (опрос раз в 2 с).
+- `/game/lessons` переносится в фазу 5 — пока нет ни контента, ни XP; вкладка «Уроки» в Mini App — заглушка «скоро».
+- Alembic управляет чистой схемой: `candles`, `indicators`, `model_training_runs` + игровые таблицы. Существующие `candles`/`indicators`/`model_training_runs` не пересоздаются (проверка `has_table`) — это и есть «перенос свечей». Старые таблицы (signals, trades, portfolio_state, subscriptions, strategy_profiles, paper_trade_logs, telegram_*) пока живут: на них держится старый бот; их ORM и `DROP` — миграцией в фазе 4 вместе с ботом. `create_all` при старте API убирается.
+- Из старого API остаются только `/ingest/update-multiple` и `/indicators/calculate-multiple` (их зовёт Airflow до фазы 7) — в `app/api/data_routes.py`. Остальные эндпоинты и сервисы, которыми больше никто не пользуется, удаляются.
+- Mini App: `static/miniapp/index.html` + `app.js` + `style.css` + `i18n.json` (RU/EN, ключи ошибок = `GameError.code`), без сборки, `lightweight-charts` с CDN.
+
+**Review Focus фазы 3:**
+1. **Подделанный или просроченный initData** — ожидание: 401, игрок не создаётся. Тест: `test_invalid_init_data_rejected` (Task 16).
+2. **Двойной тап «Купить»** (два параллельных запроса, оба прошли проверку движка) — ожидание: второй получает 409 `position_exists`, не 500; в БД одна открытая позиция. Тест: `test_open_position_unique_index` (Task 15), `test_concurrent_open_maps_to_position_exists` (Task 18).
+3. **Биржа недоступна** — ожидание: `exchange_down=true` в `/game/quotes`, ордер → 503 `stale_quote`, баланс не меняется. Тест: `test_quotes_flag_exchange_down`, `test_order_on_stale_quote_is_503` (Tasks 17, 18).
+4. **Закрытие чужой позиции по id** — ожидание: 404, позиция не тронута. Тест: `test_cannot_close_foreign_position` (Task 18).
+5. **Бесплатный игрок смотрит мнения ИИ** — ожидание: только мнения старше 1 ч, Pro — все. Тест: `test_free_viewer_sees_decisions_one_hour_ago` (Task 19).
+
+### Task 15: Alembic и чистая схема
+**Files:** Create `alembic.ini`, `alembic/env.py`, `alembic/script.py.mako`, `alembic/versions/0001_game_schema.py`; Modify `app/game/models.py` (`Player.nickname_set` Boolean default False; `Index("uq_position_open_symbol", "portfolio_id", "symbol", unique=True, postgresql_where=closed_at IS NULL, sqlite_where=…)`), `requirements.txt` (`alembic`), `requirements-dev.txt` (`httpx`); Test `tests/test_migrations.py`
+**Interfaces:** `env.py` берёт URL из `config.get_main_option("sqlalchemy.url")`, если задан, иначе `settings.database_url`; `target_metadata = Base.metadata`.
+- [ ] **Step 1: Тесты** `test_upgrade_creates_managed_tables` (upgrade на пустом SQLite-файле → есть все таблицы `Base.metadata`, кроме `LEGACY_TABLES`, с теми же колонками), `test_upgrade_keeps_existing_candles` (таблица `candles` со строкой создана заранее → после upgrade строка на месте), `test_open_position_unique_index` (вторая открытая позиция той же пары → `IntegrityError`; закрытая + открытая — можно).
+- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(db): add alembic with clean game schema`.
+
+### Task 16: Каркас game API, игрок, профиль
+**Files:** Create `app/api/game_deps.py`, `app/api/game_routes.py`, `app/game/players.py`; Modify `app/game/errors.py` (`SymbolLocked`, `InvalidNickname`, `NicknameTaken`); Test `tests/api/__init__.py`, `tests/api/conftest.py` (SQLite `StaticPool`, `TestClient`, подпись initData тестовым токеном, override `get_db`/`get_quotes`/`get_now_ms`), `tests/api/test_me.py`
+**Interfaces:**
+- `app.game.players`: `get_or_create_player(db, tg_user: dict, now_ms) -> Player`; `validate_nickname(db, player, nickname) -> str`; `unlocked_symbols(player) -> tuple[str, ...]`.
+- `app.api.game_deps`: `get_quotes() -> QuoteBook` (модульный синглтон), `get_now_ms() -> int`, `current_player(auth=Depends(miniapp_auth), db, now_ms) -> Player` (бан → 403); `game_error_response` — exception handler `GameError` → JSON `{"status":"error","code"}`.
+- `GET /game/me` → `{player: {id, nickname, language, league_tier, xp, is_pro, needs_nickname, badges}, portfolios: {sprint, week}}`, портфель = `{season_id, starts_at, ends_at, cash, value, return_pct, trades, trades_today, trades_limit}`. `PATCH /game/me` `{nickname?, language?}`.
+- [ ] **Step 1: Тесты** `test_invalid_init_data_rejected` (RF1), `test_first_visit_creates_player_and_joins_both_seasons`, `test_me_is_idempotent`, `test_set_nickname_once`, `test_nickname_taken_case_insensitive_including_ai`, `test_invalid_nickname`, `test_language_switch`, `test_banned_player_forbidden`.
+- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(api): add game api skeleton with player profile`.
+
+### Task 17: Котировки и свечи
+**Files:** Modify `app/api/game_routes.py`; Test `tests/api/test_market.py`
+**Interfaces:** `GET /game/quotes` → `{source: "binance", exchange_down, symbols: unlocked, quotes: [{symbol, bid, ask, ts, fresh}]}`; `exchange_down` = нет котировок или последняя старше `STALE_AFTER_MS`. `GET /game/candles?symbol=&limit=300` (≤ 1000) → `[{time, open, high, low, close}]` по возрастанию, 5m; символ вне `GAME_SYMBOLS` → 409 `unknown_symbol`.
+- [ ] **Step 1: Тесты** `test_quotes_lists_unlocked_symbols`, `test_quotes_flag_exchange_down` (RF3), `test_candles_ascending_in_seconds`, `test_candles_unknown_symbol`.
+- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(api): add quotes and candles endpoints`.
+
+### Task 18: Ордера и позиции
+**Files:** Modify `app/api/game_routes.py`; Test `tests/api/test_orders.py`
+**Interfaces:** `POST /game/orders` `{season: "sprint"|"week", symbol, side, amount_usdt, stop_loss?, take_profit?}` → позиция; `IntegrityError` → rollback + 409 `position_exists`. `POST /game/positions/{id}/close` → позиция. `GET /game/positions?season=&status=open|closed` → позиции; у открытых `value` и `unrealized_pnl` (по последней цене). Позиция в JSON: `{id, symbol, side, qty, entry_price, reserved, stop_loss, take_profit, opened_at, closed_at, exit_price, pnl, close_reason}`.
+- [ ] **Step 1: Тесты** `test_open_long_and_close`, `test_locked_symbol_rejected`, `test_game_rule_maps_to_409` (лимит 50%), `test_order_on_stale_quote_is_503` (RF3), `test_concurrent_open_maps_to_position_exists` (RF2: `open_positions` замокан на `[]`), `test_cannot_close_foreign_position` (RF4), `test_positions_open_and_closed`.
+- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(api): add orders and positions endpoints`.
+
+### Task 19: Рейтинг и ИИ
+**Files:** Modify `app/api/game_routes.py`, `app/game/ai_view.py`; Test `tests/api/test_leaderboard.py`, `tests/game/test_ai_view.py`
+**Interfaces:** `ai_decisions_view(db, viewer, ai_player, now_ms, *, limit=20) -> list[AiDecision]` — Pro: все, иначе `created_at ≤ now − AI_VISIBILITY_DELAY_MS`; свежие первыми. `GET /game/leaderboard?season=sprint|week` → `{season_id, scope: "global"|"group", tier, rows: [{rank, nickname, is_ai, return_pct, trades, qualified, is_me}]}` — неделя: группа лиги игрока, спринт: глобально; топ-100 + строка игрока. `GET /game/ai?season=week` → `[{key, nickname, return_pct, positions, decisions}]` через `ai_positions_view`/`ai_decisions_view`, `delayed: bool`.
+- [ ] **Step 1: Тесты** `test_free_viewer_sees_decisions_one_hour_ago` (RF5), `test_pro_viewer_sees_all_decisions`, `test_week_leaderboard_is_my_group_with_ai_ghosts`, `test_sprint_leaderboard_global_marks_me`, `test_ai_endpoint_delays_for_free`.
+- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(api): add leaderboard and ai endpoints`.
+
+### Task 20: Чистка старого API
+**Files:** Rewrite `app/api/main.py` (lifespan с `BinanceFeed`, `/`, `/health/db`, `/miniapp`, favicon, static, роутеры); Create `app/api/data_routes.py`; Delete сервисы без потребителей; Test `tests/api/test_app.py`
+- [ ] **Step 1: Тесты** `test_old_endpoints_removed` (`/strategy/signals`, `/paper-trading/portfolio`, `/miniapp/api/me` → 404), `test_data_routes_kept` (оба пути в `app.routes`), `test_miniapp_served`.
+- [ ] **Step 2–5:** FAIL → реализовать → PASS (весь `pytest`; `import app.telegram.bot` не падает) → commit `refactor(api): drop legacy endpoints`.
+
+### Task 21: Mini App
+**Files:** Rewrite `static/miniapp/index.html`; Create `static/miniapp/app.js`, `static/miniapp/style.css`, `static/miniapp/i18n.json`; Test `tests/api/test_miniapp_i18n.py`
+**Экраны:** Торговля (выбор пары, график, bid/ask, «цены Binance», плашка «биржа недоступна», переключатель Спринт/Неделя, ордер лонг/шорт с суммой и SL/TP, открытые позиции с «Закрыть»), Рейтинг, ИИ (позиции и мнения, пометка «с задержкой 1 ч»), Уроки (заглушка), Профиль (ник, язык, лига, бейджи). Дисклеймер — модалка при первом входе (`localStorage`) и в подвале. Модалка ника при `needs_nickname`. Все запросы с `Authorization: tma <initData>`.
+- [ ] **Step 1: Тесты** `test_i18n_keys_match` (наборы ключей ru == en), `test_i18n_covers_error_codes` (каждый `code` наследников `GameError` + `banned`, `position_not_found` есть в `errors.*`), `test_disclaimer_present` (ключ `disclaimer` в обоих языках, содержит «виртуальн» / «virtual»).
+- [ ] **Step 2–5:** FAIL → реализовать → PASS → ручной смоук в браузере → commit `feat(miniapp): rebuild mini app as game ui`.
+
 ## Фазы 2–7 — дорожная карта (детальный план на каждую — перед стартом фазы)
 
 **Фаза 2 — ИИ-персонажи.** `app/game/ai_personas.py`: три `Player(is_ai=True)` (`lstm` агрессивный 0.55/0.45, 40%, SL 3%/TP 6%; `random_forest` осторожный 0.65/0.35, 15%, SL 1.5%/TP 3%; `logistic_regression` новичок 0.55/0.45, 25%, без трендового фильтра); решение на закрытии каждой 5m-свечи BTC/ETH/SOL через `open_position(..., is_user=True)` — те же лимиты. Исправить сохранение RF/LogReg: отдельный файл на символ. Дефолтный бэктест → out-of-sample. Задержка видимости позиций ИИ 1 ч для не-Pro.
