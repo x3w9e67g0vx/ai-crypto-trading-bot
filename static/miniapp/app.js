@@ -18,6 +18,8 @@
         chart: null,
         series: null,
         lastBar: null,
+        // Lesson to open on the next visit to the lessons tab (after a micro lesson).
+        lesson: null,
     };
 
     const $ = (selector, root = document) => root.querySelector(selector);
@@ -153,6 +155,22 @@
                     localStorage.setItem(DISCLAIMER_KEY, "1");
                     done();
                 };
+            },
+        );
+    }
+
+    function tipModal(tip) {
+        return modal(
+            `<h2>${esc(t("tip.title"))}</h2>
+             <p>${esc(t(`tip.${tip.code}`))}</p>
+             <div class="tip-actions">
+               <button class="primary" id="tip-open">${esc(t("tip.open"))}</button>
+               <button id="tip-ok">${esc(t("tip.ok"))}</button>
+             </div>`,
+            (dialog, done) => {
+                dialog.addEventListener("cancel", () => done(false), { once: true });
+                $("#tip-open", dialog).onclick = () => done(true);
+                $("#tip-ok", dialog).onclick = () => done(false);
             },
         );
     }
@@ -345,9 +363,88 @@
         });
     }
 
+    const HISTORY_ROWS = 10;
+
+    function renderHistory(rows) {
+        const list = $("#history");
+        if (!rows.length) {
+            list.innerHTML = `<li class="empty">${esc(t("positions.history_empty"))}</li>`;
+            return;
+        }
+        list.innerHTML = rows
+            .slice(0, HISTORY_ROWS)
+            .map(
+                (row) => `<li>
+                  <div class="grow">
+                    <div><strong>${esc(row.symbol)}</strong>
+                      <span class="side-tag ${row.side === "long" ? "up" : "down"}">${esc(t(`side.${row.side}`))}</span></div>
+                    <div class="hint">${esc(t(`reason.${row.close_reason}`))} · ${clock(row.closed_at)}</div>
+                  </div>
+                  <span class="num ${trend(row.pnl)}">${money(row.pnl)}</span>
+                  <button class="small-btn" data-review="${row.id}">${esc(t("positions.review"))}</button>
+                </li>`,
+            )
+            .join("");
+        list.querySelectorAll("[data-review]").forEach((button) => {
+            button.onclick = () => reviewModal(button.dataset.review);
+        });
+    }
+
+    function indicatorsLine(snapshot) {
+        if (!snapshot) return t("review.no_data");
+        const rsi = snapshot.rsi == null ? "—" : Math.round(snapshot.rsi);
+        return t("review.indicators", { rsi, trend: t(`review.trend.${snapshot.trend}`) });
+    }
+
+    async function reviewModal(positionId) {
+        let review;
+        try {
+            review = await api(`/game/positions/${positionId}/review`);
+        } catch (error) {
+            toast(errorText(error));
+            return;
+        }
+        const r = review.result;
+        const ai = review.ai.length
+            ? review.ai
+                  .map((row) => `<li><div class="grow">${esc(row.nickname)} — ${esc(t(`ai.view.${row.view}`))}</div>
+                      <span class="hint">${Math.round(row.probability_up * 100)}%</span></li>`)
+                  .join("")
+            : `<li class="hint">${esc(t("review.ai_none"))}</li>`;
+        const notes = review.notes.map((code) => `<li>${esc(t(`note.${code}`))}</li>`).join("");
+        const result = t("review.result", {
+            pnl: money(r.pnl),
+            pct: pct(r.pnl_pct),
+            time: duration(r.duration_ms),
+            reason: t(`reason.${r.close_reason}`),
+        });
+        await modal(
+            `<h2>${esc(t("review.title", { symbol: review.symbol, side: t(`side.${review.side}`) }))}</h2>
+             <p class="num ${trend(r.pnl)}">${esc(result)}</p>
+             <p class="hint">${esc(t("review.prices", { entry: price(r.entry_price), exit: price(r.exit_price) }))}</p>
+             <ul class="list">
+               <li><div class="grow hint">${esc(t("review.entry"))}</div><span>${esc(indicatorsLine(review.entry))}</span></li>
+               <li><div class="grow hint">${esc(t("review.exit"))}</div><span>${esc(indicatorsLine(review.exit))}</span></li>
+             </ul>
+             <h3>${esc(t("review.ai"))}</h3>
+             <ul class="list">${ai}</ul>
+             ${notes ? `<h3>${esc(t("review.notes"))}</h3><ul class="notes">${notes}</ul>` : ""}
+             <button class="primary" id="review-close">${esc(t("review.close"))}</button>`,
+            (dialog, done) => {
+                dialog.addEventListener("cancel", () => done(), { once: true });
+                $("#review-close", dialog).onclick = () => done();
+            },
+        );
+    }
+
     async function refreshTrade() {
-        const [rows] = await Promise.all([api(`/game/positions?season=${state.season}`), refreshMe()]);
+        const [rows, closed] = await Promise.all([
+            api(`/game/positions?season=${state.season}`),
+            api(`/game/positions?season=${state.season}&status=closed`),
+            refreshMe(),
+        ]);
         renderPositions(rows);
+        renderHistory(closed);
         renderSeasonMeta();
     }
 
@@ -393,7 +490,7 @@
     async function placeOrder(side) {
         const amount = Number($("#amount").value.replace(",", "."));
         try {
-            await api("/game/orders", {
+            const position = await api("/game/orders", {
                 method: "POST",
                 body: {
                     season: state.season,
@@ -408,6 +505,12 @@
             toast(t("order.placed"));
             $("#stop-loss").value = $("#take-profit").value = "";
             await refreshTrade();
+            for (const tip of position.tips || []) {
+                if (await tipModal(tip)) {
+                    openLesson(tip.lesson_id);
+                    break;
+                }
+            }
         } catch (error) {
             haptic("error");
             toast(errorText(error));
@@ -448,7 +551,9 @@
               </div>
             </section>
             <h2>${esc(t("positions.open"))}</h2>
-            <ul class="list" id="positions"></ul>`;
+            <ul class="list" id="positions"></ul>
+            <h2>${esc(t("positions.history"))}</h2>
+            <ul class="list" id="history"></ul>`;
 
         bindSeasonSwitch();
         screen.querySelectorAll("[data-symbol]").forEach((button) => {
@@ -537,8 +642,108 @@
 
     // ---------- lessons ----------
 
+    // Mirrors XP_PER_TRADE in app/game/config.py.
+    const XP_PER_TRADE = 10;
+
+    function levelCard(player) {
+        const top = player.next_level_xp == null;
+        const progress = top
+            ? t("learn.max", { xp: player.xp })
+            : t("learn.progress", { xp: player.xp, next: player.next_level_xp });
+        const share = top ? 100 : Math.round(((player.xp - player.level_xp) / (player.next_level_xp - player.level_xp)) * 100);
+        const unlocks = player.next_unlocks.length
+            ? `<p class="hint">${esc(t("learn.next_unlocks", { pairs: player.next_unlocks.map((s) => s.replace("/USDT", "")).join(", ") }))}</p>`
+            : "";
+        return `<section class="level-card">
+            <h3><span>${esc(t("learn.level", { level: player.level }))}</span><span class="hint">${esc(progress)}</span></h3>
+            <div class="level-bar"><span style="width:${share}%"></span></div>
+            ${unlocks}
+        </section>`;
+    }
+
+    // Lesson text is escaped first; only **bold** becomes markup.
+    function inline(text) {
+        return esc(text).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    }
+
+    function lessonBody(blocks) {
+        let html = "";
+        let list = false;
+        for (const block of blocks) {
+            if (block.type === "li" && !list) html += "<ul>";
+            if (block.type !== "li" && list) html += "</ul>";
+            list = block.type === "li";
+            const tag = { h: "h3", p: "p", li: "li" }[block.type];
+            html += `<${tag}>${inline(block.text)}</${tag}>`;
+        }
+        return list ? `${html}</ul>` : html;
+    }
+
+    function openLesson(lessonId) {
+        state.lesson = lessonId;
+        go("learn");
+    }
+
+    async function lessonScreen(lessonId) {
+        const lesson = await api(`/game/lessons/${encodeURIComponent(lessonId)}`);
+        screen.innerHTML = `
+            <button class="small-btn" id="lessons-back">${esc(t("learn.back"))}</button>
+            <article class="lesson">
+              <h2>${esc(lesson.title)}${lesson.done ? ` <span class="side-tag up">${esc(t("learn.done"))}</span>` : ""}</h2>
+              ${lessonBody(lesson.blocks)}
+            </article>
+            <section class="quiz">
+              <h3>${esc(t("learn.quiz"))}</h3>
+              <p>${esc(lesson.question)}</p>
+              <div class="quiz-options">
+                ${lesson.options.map((option, index) => `<button data-answer="${index}">${esc(option)}</button>`).join("")}
+              </div>
+              <p class="form-error" id="quiz-error"></p>
+            </section>`;
+        $("#lessons-back").onclick = () => go("learn");
+        screen.querySelectorAll("[data-answer]").forEach((button) => {
+            button.onclick = async () => {
+                try {
+                    const result = await api(`/game/lessons/${encodeURIComponent(lessonId)}/complete`, {
+                        method: "POST",
+                        body: { answer: Number(button.dataset.answer) },
+                    });
+                    haptic("success");
+                    toast(result.xp_awarded ? t("learn.passed", { xp: result.xp_awarded }) : t("learn.passed_again"));
+                    go("learn");
+                } catch (error) {
+                    haptic("error");
+                    button.disabled = true;
+                    $("#quiz-error").textContent = errorText(error);
+                }
+            };
+        });
+        window.scrollTo(0, 0);
+    }
+
     async function learnScreen() {
-        screen.innerHTML = `<p class="empty">${esc(t("learn.soon"))}</p>`;
+        if (state.lesson) {
+            const lessonId = state.lesson;
+            state.lesson = null;
+            await lessonScreen(lessonId);
+            return;
+        }
+        const [lessons] = await Promise.all([api("/game/lessons"), refreshMe()]);
+        const rows = lessons
+            .map(
+                (lesson) => `<li>
+                  <div class="grow"><strong>${esc(lesson.title)}</strong></div>
+                  <span class="${lesson.done ? "side-tag up" : "hint"}">${esc(lesson.done ? t("learn.done") : t("learn.reward", { xp: lesson.xp }))}</span>
+                  <button class="small-btn" data-lesson="${esc(lesson.id)}">›</button>
+                </li>`,
+            )
+            .join("");
+        screen.innerHTML = `${levelCard(state.me.player)}
+            <p class="hint">${esc(t("learn.how", { xp: lessons.length ? lessons[0].xp : 0, trade_xp: XP_PER_TRADE }))}</p>
+            <ul class="list">${rows}</ul>`;
+        screen.querySelectorAll("[data-lesson]").forEach((button) => {
+            button.onclick = () => lessonScreen(button.dataset.lesson);
+        });
     }
 
     // ---------- profile ----------
@@ -561,6 +766,7 @@
               <li><div class="grow hint">${esc(t("profile.league"))}</div><strong>${esc(t(`league.${player.league_tier}`))}</strong></li>
               <li><div class="grow hint">${esc(t("profile.xp"))}</div><span class="num">${player.xp}</span></li>
             </ul>
+            ${levelCard(player)}
             <h2>${esc(t("profile.badges"))}</h2>
             <ul class="list">${badges}</ul>`;
         $("#change-nick").onclick = async () => {
@@ -614,7 +820,7 @@
 
         await disclaimerModal();
         if (state.me.player.needs_nickname) await nicknameModal({ required: true });
-        go("trade");
+        go(location.hash === "#learn" ? "learn" : "trade");
     }
 
     boot();
