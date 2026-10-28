@@ -6,10 +6,12 @@ from sqlalchemy import (
     Column,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     UniqueConstraint,
 )
+from sqlalchemy import text
 from sqlalchemy.orm import relationship
 
 from app.core.db.base import Base
@@ -21,6 +23,8 @@ class Player(Base):
     id = Column(Integer, primary_key=True, index=True)
     telegram_id = Column(BigInteger, nullable=True, unique=True, index=True)
     nickname = Column(String, nullable=False)
+    # False until the player confirms a nickname in the Mini App.
+    nickname_set = Column(Boolean, nullable=False, default=False)
     language = Column(String, nullable=False, default="ru")
 
     is_ai = Column(Boolean, nullable=False, default=False)
@@ -69,6 +73,18 @@ class Portfolio(Base):
 
 class Position(Base):
     __tablename__ = "positions"
+    __table_args__ = (
+        # One open position per pair, enforced by the DB too: two parallel
+        # orders can both pass the engine's check before either commits.
+        Index(
+            "uq_position_open_symbol",
+            "portfolio_id",
+            "symbol",
+            unique=True,
+            postgresql_where=text("closed_at IS NULL"),
+            sqlite_where=text("closed_at IS NULL"),
+        ),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     portfolio_id = Column(Integer, ForeignKey("portfolios.id"), nullable=False, index=True)
