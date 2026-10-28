@@ -10,12 +10,13 @@ from dataclasses import dataclass
 
 import aiohttp
 
-from app.game.config import GAME_SYMBOLS
+from app.game.config import CANDLE_TIMEFRAME, GAME_SYMBOLS
 from app.game.quotes import Quote, QuoteBook
 
 logger = logging.getLogger(__name__)
 
 BINANCE_STREAM_BASE = "wss://stream.binance.com:9443/stream?streams="
+KLINE_STREAM = f"@kline_{CANDLE_TIMEFRAME}"
 MAX_BACKOFF_SECONDS = 30
 
 _SYMBOLS_BY_STREAM_NAME = {symbol.replace("/", ""): symbol for symbol in GAME_SYMBOLS}
@@ -36,7 +37,7 @@ def stream_url(symbols: Iterable[str]) -> str:
     streams = []
     for symbol in symbols:
         name = symbol.replace("/", "").lower()
-        streams += [f"{name}@bookTicker", f"{name}@kline_1m"]
+        streams += [f"{name}@bookTicker", f"{name}{KLINE_STREAM}"]
     return BINANCE_STREAM_BASE + "/".join(streams)
 
 
@@ -44,7 +45,7 @@ def _valid_quote(bid: float, ask: float) -> bool:
     return math.isfinite(bid) and math.isfinite(ask) and 0 < bid <= ask
 
 
-def _valid_candle(o: float, h: float, l: float, c: float, v: float) -> bool:
+def valid_candle(o: float, h: float, l: float, c: float, v: float) -> bool:
     return (
         all(math.isfinite(x) for x in (o, h, l, c, v))
         and 0 < l <= min(o, c)
@@ -54,7 +55,7 @@ def _valid_candle(o: float, h: float, l: float, c: float, v: float) -> bool:
 
 
 def parse_message(raw: dict, now_ms: int) -> Quote | ClosedCandle | None:
-    """Turn one combined-stream message into a quote or a closed 1m candle.
+    """Turn one combined-stream message into a quote or a closed candle.
 
     Anything malformed or implausible is dropped: these prices settle virtual money.
     """
@@ -67,7 +68,7 @@ def parse_message(raw: dict, now_ms: int) -> Quote | ClosedCandle | None:
         return None
 
     try:
-        if stream.endswith("@kline_1m"):
+        if stream.endswith(KLINE_STREAM):
             kline = data["k"]
             if kline.get("x") is not True:
                 return None
@@ -80,7 +81,7 @@ def parse_message(raw: dict, now_ms: int) -> Quote | ClosedCandle | None:
                 close=float(kline["c"]),
                 volume=float(kline["v"]),
             )
-            if not _valid_candle(candle.open, candle.high, candle.low, candle.close, candle.volume):
+            if not valid_candle(candle.open, candle.high, candle.low, candle.close, candle.volume):
                 return None
             return candle
         if stream.endswith("@bookTicker"):

@@ -5,7 +5,7 @@ from app.game.quotes import Quote
 def test_stream_url():
     assert stream_url(["BTC/USDT", "ETH/USDT"]) == (
         "wss://stream.binance.com:9443/stream?streams="
-        "btcusdt@bookTicker/btcusdt@kline_1m/ethusdt@bookTicker/ethusdt@kline_1m"
+        "btcusdt@bookTicker/btcusdt@kline_5m/ethusdt@bookTicker/ethusdt@kline_5m"
     )
 
 
@@ -15,8 +15,8 @@ def test_parse_book_ticker():
 
 
 def test_parse_closed_kline_only():
-    kline = {"t": 60_000, "s": "ETHUSDT", "i": "1m", "o": "1", "h": "3", "l": "0.5", "c": "2", "v": "10", "x": False}
-    raw = {"stream": "ethusdt@kline_1m", "data": {"e": "kline", "s": "ETHUSDT", "k": kline}}
+    kline = {"t": 60_000, "s": "ETHUSDT", "i": "5m", "o": "1", "h": "3", "l": "0.5", "c": "2", "v": "10", "x": False}
+    raw = {"stream": "ethusdt@kline_5m", "data": {"e": "kline", "s": "ETHUSDT", "k": kline}}
     assert parse_message(raw, 0) is None
     kline["x"] = True
     assert parse_message(raw, 0) == ClosedCandle("ETH/USDT", 60_000, 1.0, 3.0, 0.5, 2.0, 10.0)
@@ -47,12 +47,12 @@ def test_parse_rejects_bad_candles():
     def kline(**over):
         k = {"t": 0, "o": "1", "h": "3", "l": "0.5", "c": "2", "v": "10", "x": True}
         k.update(over)
-        return {"stream": "btcusdt@kline_1m", "data": {"e": "kline", "s": "BTCUSDT", "k": k}}
+        return {"stream": "btcusdt@kline_5m", "data": {"e": "kline", "s": "BTCUSDT", "k": k}}
 
     assert parse_message(kline(), 0) is not None
     for over in ({"h": "1.5"}, {"l": "1.5"}, {"v": "-1"}, {"c": "nan"}, {"l": "0"}, {"t": "x"}, {"x": "true"}):
         assert parse_message(kline(**over), 0) is None
-    assert parse_message({"stream": "btcusdt@kline_1m", "data": {"s": "BTCUSDT"}}, 0) is None
+    assert parse_message({"stream": "btcusdt@kline_5m", "data": {"s": "BTCUSDT"}}, 0) is None
 
 
 def test_failed_candle_callback_keeps_watermark():
@@ -84,7 +84,7 @@ def test_failed_candle_callback_keeps_watermark():
     def candle(t):
         k = {"t": t, "o": "1", "h": "3", "l": "0.5", "c": "2", "v": "10", "x": True}
         import json
-        return json.dumps({"stream": "btcusdt@kline_1m", "data": {"e": "kline", "s": "BTCUSDT", "k": k}})
+        return json.dumps({"stream": "btcusdt@kline_5m", "data": {"e": "kline", "s": "BTCUSDT", "k": k}})
 
     async def on_candle(event):
         if event.open_time == 120_000:

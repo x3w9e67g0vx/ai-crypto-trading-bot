@@ -35,8 +35,16 @@ def test_upgrade_creates_managed_tables(db_url):
 
 def test_upgrade_keeps_existing_candles(db_url):
     engine = create_engine(db_url)
-    Base.metadata.tables["candles"].create(engine)
     with engine.begin() as connection:
+        # The pre-VEYDRANOX table, without the source column.
+        connection.execute(
+            text(
+                "CREATE TABLE candles (id INTEGER PRIMARY KEY, symbol VARCHAR NOT NULL, "
+                "timeframe VARCHAR NOT NULL, timestamp BIGINT NOT NULL, open FLOAT NOT NULL, "
+                "high FLOAT NOT NULL, low FLOAT NOT NULL, close FLOAT NOT NULL, volume FLOAT NOT NULL, "
+                "CONSTRAINT uq_candle_symbol_timeframe_timestamp UNIQUE (symbol, timeframe, timestamp))"
+            )
+        )
         connection.execute(
             text(
                 "INSERT INTO candles (symbol, timeframe, timestamp, open, high, low, close, volume) "
@@ -47,7 +55,7 @@ def test_upgrade_keeps_existing_candles(db_url):
     _upgrade(db_url)
 
     with engine.connect() as connection:
-        assert connection.execute(text("SELECT count(*) FROM candles")).scalar() == 1
+        assert connection.execute(text("SELECT source FROM candles")).scalars().all() == ["binance"]
 
 
 def test_open_position_unique_index(db_url):

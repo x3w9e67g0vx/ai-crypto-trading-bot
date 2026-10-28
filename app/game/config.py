@@ -46,6 +46,12 @@ AI_SYMBOLS = STARTER_SYMBOLS
 AI_TIMEFRAME = "5m"
 # Mini App chart candles.
 CHART_TIMEFRAME = "5m"
+# Candles the price worker stores: the models', charts' and tips' timeframe.
+CANDLE_TIMEFRAME = CHART_TIMEFRAME
+CANDLE_TIMEFRAME_MS = 5 * 60 * 1000
+# REST backfill after a restart or reconnect, in pages of this many candles.
+BACKFILL_BATCH = 500
+BACKFILL_MAX_BATCHES = 100
 AI_MIN_ORDER_USDT = 10.0
 # Free players see AI positions as they were this long ago.
 AI_VISIBILITY_DELAY_MS = 60 * 60 * 1000

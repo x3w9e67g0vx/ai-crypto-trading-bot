@@ -34,6 +34,8 @@ class Candle(Base):
     low = Column(Float, nullable=False)
     close = Column(Float, nullable=False)
     volume = Column(Float, nullable=False)
+    # binance, or bybit while Binance is down (charts only; Binance replaces it later).
+    source = Column(String, nullable=False, default="binance", server_default="binance")
 
 
 class Indicator(Base):
