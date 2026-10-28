@@ -54,3 +54,11 @@ class InvalidNickname(GameError):
 
 class NicknameTaken(GameError):
     code = "nickname_taken"
+
+
+class LessonNotFound(GameError):
+    code = "lesson_not_found"
+
+
+class WrongAnswer(GameError):
+    code = "wrong_answer"

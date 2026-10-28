@@ -68,3 +68,45 @@ def test_lesson_progress_unique(db):
     db.add(LessonProgress(player_id=player.id, lesson_id="01", completed_at=NOW))
     with pytest.raises(IntegrityError):
         db.flush()
+
+
+def _lesson():
+    from app.game.lessons import get_lesson
+
+    return get_lesson("ru", "01")
+
+
+def test_complete_awards_xp_and_logs_event(db):
+    from app.game.config import XP_PER_LESSON
+    from app.game.models import Event
+    from app.game.progress import complete_lesson, completed_lessons
+
+    player = make_player(db, telegram_id=1)
+    lesson = _lesson()
+    assert complete_lesson(db, player, lesson, lesson.answer, NOW) == XP_PER_LESSON
+    assert player.xp == XP_PER_LESSON
+    assert completed_lessons(db, player) == {"01"}
+    assert db.query(Event).filter_by(player_id=player.id, kind="lesson_done").count() == 1
+
+
+def test_complete_twice_awards_once(db):
+    from app.game.config import XP_PER_LESSON
+    from app.game.progress import complete_lesson
+
+    player = make_player(db, telegram_id=1)
+    lesson = _lesson()
+    complete_lesson(db, player, lesson, lesson.answer, NOW)
+    assert complete_lesson(db, player, lesson, lesson.answer, NOW + 1) == 0
+    assert player.xp == XP_PER_LESSON
+
+
+def test_wrong_answer_raises_without_progress(db):
+    from app.game.errors import WrongAnswer
+    from app.game.progress import complete_lesson, completed_lessons
+
+    player = make_player(db, telegram_id=1)
+    lesson = _lesson()
+    with pytest.raises(WrongAnswer):
+        complete_lesson(db, player, lesson, (lesson.answer + 1) % len(lesson.options), NOW)
+    assert player.xp == 0
+    assert completed_lessons(db, player) == set()
