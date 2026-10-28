@@ -25,10 +25,11 @@ from app.game.config import (
 )
 from app.game.errors import PositionExists, PositionNotFound, SymbolLocked, UnknownSymbol
 from app.game.leaderboard import standings
-from app.game.models import Badge, LeagueGroup, LeagueMembership, Player, Portfolio, Position
+from app.game.leagues import group_portfolio_ids
+from app.game.models import Badge, Player, Portfolio, Position
 from app.game.players import unlocked_symbols, validate_nickname
 from app.game.quotes import QuoteBook
-from app.game.seasons import ensure_current_season, join_season
+from app.game.seasons import current_portfolio, ensure_current_season
 from app.game.trading import (
     close_position,
     open_position,
@@ -42,12 +43,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/game", tags=["game"])
 
 SeasonParam = Literal["sprint", "week"]
-
-
-def current_portfolio(db: Session, player: Player, kind: str, now_ms: int) -> Portfolio:
-    """The player's portfolio in the running season of this kind, joining it if needed."""
-    season = ensure_current_season(db, SeasonKind(kind), now_ms)
-    return join_season(db, player, season, now_ms)
 
 
 def _player_json(db: Session, player: Player, now_ms: int) -> dict:
@@ -303,15 +298,7 @@ def get_leaderboard(
     """Week: the player's league group (AI ghosts included); sprint: everyone."""
     portfolio = current_portfolio(db, player, season, now_ms)
     db.commit()
-    group = (
-        db.query(LeagueGroup)
-        .join(LeagueMembership, LeagueMembership.group_id == LeagueGroup.id)
-        .filter(LeagueMembership.portfolio_id == portfolio.id)
-        .one_or_none()
-    )
-    portfolio_ids = None
-    if group is not None:
-        portfolio_ids = [row.portfolio_id for row in db.query(LeagueMembership.portfolio_id).filter_by(group_id=group.id)]
+    group, portfolio_ids = group_portfolio_ids(db, portfolio)
     table = standings(db, portfolio.season, quotes, now_ms, portfolio_ids=portfolio_ids)
 
     rows = [

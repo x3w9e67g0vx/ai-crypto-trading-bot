@@ -337,7 +337,7 @@
 - [x] **Step 1: Тесты** `test_i18n_keys_match` (наборы ключей ru == en), `test_i18n_covers_error_codes` (каждый `code` наследников `GameError` + `banned`, `position_not_found` есть в `errors.*`), `test_disclaimer_present` (ключ `disclaimer` в обоих языках, содержит «виртуальн» / «virtual»).
 - [x] **Step 2–5:** FAIL → реализовать → PASS → ручной смоук в браузере → commit `feat(miniapp): rebuild mini app as game ui`.
 
-## Фаза 4 — Бот (детально)
+## Фаза 4 — Бот (детально) — ✅ выполнена, 176 тестов всего
 
 **Решения строителя (не из спеки):**
 - Бот — отдельный процесс со своим `BinanceFeed` в свой `QuoteBook` (как API; `GAME_PRICE_FEED=0` отключает): котировки нужны для `/rank`, уведомлений и ручного завершения сезона. Единый воркер цен — фаза 7.
@@ -360,42 +360,42 @@
 
 ### Task 22: Модели и миграция 0002
 **Files:** Modify `app/game/models.py` (`Player.notify_overtaken/notify_ai_open/notify_season_end` Boolean default True; `LeagueMembership.last_rank` Integer nullable; новые `Notification`, `ChatLeague`, `ChatLeagueMember`, `Event`); Create `alembic/versions/0002_bot_tables.py`; Test `tests/test_migrations.py`, `tests/game/test_models.py`
-- [ ] **Step 1: Тесты** `test_upgrade_creates_managed_tables` уже покрывает новые таблицы/колонки; `test_notification_unique_per_key` (вторая `(player, kind, key)` → `IntegrityError`), `test_chat_league_member_unique`.
-- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(db): add bot tables`.
+- [x] **Step 1: Тесты** `test_upgrade_creates_managed_tables` уже покрывает новые таблицы/колонки; `test_notification_unique_per_key` (вторая `(player, kind, key)` → `IntegrityError`), `test_chat_league_member_unique`.
+- [x] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(db): add bot tables`.
 
 ### Task 23: События и retention
 **Files:** Create `app/game/analytics.py`; Modify `app/game/players.py` (`start` при создании), `app/api/game_routes.py` (`return` раз в сутки в `/game/me`, `trade` в `/game/orders`); Test `tests/game/test_analytics.py`, `tests/api/test_me.py`, `tests/api/test_orders.py`
 **Interfaces:** `log_event(db, player, kind, now_ms, *, once_per_day=False) -> bool`; `retention(db, days, now_ms) -> tuple[int, int]` (удержано, когорта).
-- [ ] **Step 1: Тесты** `test_once_per_day`, `test_retention_counts_event_on_day_n`, `test_retention_cohort_excludes_young_players`, `test_first_visit_logs_start_and_return`, `test_order_logs_trade`.
-- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(game): add analytics events and retention`.
+- [x] **Step 1: Тесты** `test_once_per_day`, `test_retention_counts_event_on_day_n`, `test_retention_cohort_excludes_young_players`, `test_first_visit_logs_start_and_return`, `test_order_logs_trade`.
+- [x] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(game): add analytics events and retention`.
 
 ### Task 24: Старт и рефералы
 **Files:** Create `app/game/referrals.py`; Modify `app/game/players.py` (`get_or_create_player(..., ) -> Player` + `start_player(db, tg_user, now_ms) -> tuple[Player, bool]`); Test `tests/game/test_referrals.py`
 **Interfaces:** `parse_ref(payload: str | None) -> int | None` (`ref_<id>`); `apply_referral(db, player, referrer_id, now_ms) -> bool`; `ref_link(bot_username, player) -> str`.
-- [ ] **Step 1: Тесты** `test_parse_ref`, `test_referral_recorded_and_badge_once`, `test_self_referral_ignored` (RF1), `test_referral_only_for_new_players` (RF1), `test_ai_referrer_ignored`.
-- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(game): add referrals with recruiter badge`.
+- [x] **Step 1: Тесты** `test_parse_ref`, `test_referral_recorded_and_badge_once`, `test_self_referral_ignored` (RF1), `test_referral_only_for_new_players` (RF1), `test_ai_referrer_ignored`.
+- [x] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(game): add referrals with recruiter badge`.
 
 ### Task 25: Частные лиги
 **Files:** Create `app/game/chat_leagues.py`; Test `tests/game/test_chat_leagues.py`
 **Interfaces:** `ensure_chat_league(db, chat_id, title, now_ms) -> ChatLeague`; `join_chat_league(db, league, player, now_ms) -> bool` (False — уже участник; бан → `SeasonClosed`); `chat_league_table(db, league, quotes, now_ms) -> list[Standing]`.
-- [ ] **Step 1: Тесты** `test_join_is_idempotent` (RF5), `test_player_in_several_leagues` (RF5), `test_banned_cannot_join` (RF5), `test_table_has_members_and_ai_only`, `test_join_enters_week_season`.
-- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(game): add private chat leagues`.
+- [x] **Step 1: Тесты** `test_join_is_idempotent` (RF5), `test_player_in_several_leagues` (RF5), `test_banned_cannot_join` (RF5), `test_table_has_members_and_ai_only`, `test_join_enters_week_season`.
+- [x] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(game): add private chat leagues`.
 
 ### Task 26: Уведомления
 **Files:** Create `app/game/notifications.py`; Modify `app/game/config.py` (`NOTIFY_DAILY_CAP = 3`, `SEASON_END_WARNING_MS = 1 ч`); Test `tests/game/test_notifications.py`
 **Interfaces:** `Outgoing(player, kind, params)`; `collect_notifications(db, quotes, now_ms) -> list[Outgoing]` — записывает `Notification` и `last_rank`.
-- [ ] **Step 1: Тесты** `test_overtaken_when_rank_drops`, `test_first_check_only_records_rank`, `test_ai_open_only_for_pro`, `test_season_end_hour_before_for_traders`, `test_daily_cap` (RF2), `test_same_event_not_repeated` (RF2), `test_disabled_kind_skipped` (RF2), `test_banned_and_ai_skipped`.
-- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(game): add notification rules`.
+- [x] **Step 1: Тесты** `test_overtaken_when_rank_drops`, `test_first_check_only_records_rank`, `test_ai_open_only_for_pro`, `test_season_end_hour_before_for_traders`, `test_daily_cap` (RF2), `test_same_event_not_repeated` (RF2), `test_disabled_kind_skipped` (RF2), `test_banned_and_ai_skipped`.
+- [x] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(game): add notification rules`.
 
 ### Task 27: Админ-операции
 **Files:** Modify `app/game/seasons.py` (`ensure_current_season` по покрытию `now`; `finalize_season(..., settle=True)`; `end_season_now(db, kind, quotes, now_ms, *, settle) -> tuple[Season, Season, bool]`); Create `app/game/admin.py` (`admin_stats(db, now_ms) -> dict`, `set_banned(db, nickname, banned) -> Player | None`); Test `tests/game/test_seasons.py`, `tests/game/test_admin.py`
-- [ ] **Step 1: Тесты** `test_end_now_settles_and_opens_next_season`, `test_restart_skips_settlement`, `test_end_now_with_stale_quotes_opens_next_season` (RF4), `test_admin_stats`, `test_ban_by_nickname_case_insensitive`.
-- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(game): add admin season and ban operations`.
+- [x] **Step 1: Тесты** `test_end_now_settles_and_opens_next_season`, `test_restart_skips_settlement`, `test_end_now_with_stale_quotes_opens_next_season` (RF4), `test_admin_stats`, `test_ban_by_nickname_case_insensitive`.
+- [x] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(game): add admin season and ban operations`.
 
 ### Task 28: Новый бот и удаление старого
 **Files:** Rewrite `app/telegram/bot.py`; Create `app/telegram/handlers.py`, `app/telegram/admin.py`, `app/telegram/views.py`, `app/telegram/notifier.py`; Rewrite bot-часть `app/i18n/strings.py`; Modify `app/core/config.py` (`ADMIN_CHAT_ID`, `MINIAPP_URL`), `app/core/db/__init__.py`, `app/core/db/models.py` (без legacy); Create `alembic/versions/0003_drop_legacy_tables.py`; Delete старые сервисы; Test `tests/telegram/` (`conftest.py` с фейками), `tests/telegram/test_handlers.py`, `tests/telegram/test_admin.py`, `tests/telegram/test_notifier.py`, `tests/test_i18n.py`, `tests/test_migrations.py`
-- [ ] **Step 1: Тесты** `test_start_shows_disclaimer_and_play_button`, `test_start_with_ref_records_referral`, `test_banned_player_gets_banned_text`, `test_rank_shows_both_seasons`, `test_settings_toggle`, `test_league_in_group_and_join_callback`, `test_private_commands_ignored_in_groups`, `test_admin_ignored_for_strangers` (RF3), `test_admin_stats_and_ban`, `test_admin_end_season`, `test_notifier_sends_and_survives_send_error`, `test_bot_strings_ru_en_keys_match`, `test_upgrade_drops_legacy_tables`; `import app.telegram.bot` не падает без токена.
-- [ ] **Step 2–5:** FAIL → реализовать → PASS (весь `pytest`) → commit `feat(bot): rewrite bot for the game and drop legacy commands`.
+- [x] **Step 1: Тесты** `test_start_shows_disclaimer_and_play_button`, `test_start_with_ref_records_referral`, `test_banned_player_gets_banned_text`, `test_rank_shows_both_seasons`, `test_settings_toggle`, `test_league_in_group_and_join_callback`, `test_private_commands_ignored_in_groups`, `test_admin_ignored_for_strangers` (RF3), `test_admin_stats_and_ban`, `test_admin_end_season`, `test_notifier_sends_and_survives_send_error`, `test_bot_strings_ru_en_keys_match`, `test_upgrade_drops_legacy_tables`; `import app.telegram.bot` не падает без токена.
+- [x] **Step 2–5:** FAIL → реализовать → PASS (весь `pytest`) → commit `feat(bot): rewrite bot for the game and drop legacy commands`.
 
 ## Фазы 2–7 — дорожная карта (детальный план на каждую — перед стартом фазы)
 

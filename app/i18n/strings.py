@@ -19,110 +19,142 @@ SUPPORTED_LANGS: set[str] = {"ru", "en"}
 # -----------------------------------------------------------------------------
 STRINGS: dict[str, dict[str, str]] = {
     "ru": {
-        # Generic
-        "common.ok": "Ок",
-        "common.error": "Ошибка",
-        "common.close": "Закрыть",
-        "common.refresh": "Обновить",
-        "common.prev": "Назад",
-        "common.next": "Вперёд",
-        # Bot meta
-        "bot.welcome_title": "AI Crypto Trading Bot",
-        "bot.status_ok": "Бот работает нормально.",
-        "bot.ping_pong": "pong",
-        "bot.your_chat_id": "Ваш chat_id: {chat_id}",
-        # Mini app
-        "bot.miniapp_missing_url": (
-            "MINIAPP_URL не настроен.\n"
-            "Укажи публичный HTTPS URL, например:\n"
-            "MINIAPP_URL=https://your-domain.com/miniapp"
+        "disclaimer": (
+            "🎓 Образовательная игра 18+. Не инвестиционная рекомендация, "
+            "деньги виртуальные, цены — Binance."
         ),
-        "bot.miniapp_open": "Открывай Mini App по кнопке ниже (и через меню внизу):",
-        "bot.menu_pinned": "Готово. Mini App закреплён в меню (кнопка внизу справа).",
-        # Subscriptions
-        "subs.none": "У вас пока нет подписок.",
-        "subs.list_title": "Ваши подписки:\n{symbols}",
-        "subs.subscribe_usage": (
-            "Укажи символ. Пример:\n"
-            "/subscribe BTC\n"
-            "/subscribe ETH\n"
-            "/subscribe AAVE/USDT"
+        "banned": "Аккаунт заблокирован.",
+        "btn.play": "🎮 Играть",
+        "start.welcome": (
+            "Привет, <b>{nickname}</b>! Это VEYDRANOX — трейдинг против ИИ.\n\n"
+            "На каждый сезон — виртуальные $10 000: Спринт (24 ч) и Неделя с лигами. "
+            "Торгуй по реальным ценам и попробуй обойти ИИ-персонажей.\n\n{disclaimer}"
         ),
-        "subs.unsubscribe_usage": (
-            "Укажи символ. Пример:\n"
-            "/unsubscribe BTC/USDT\n"
-            "/unsubscribe ETH\n"
-            "/unsubscribe SOL"
+        "play.open": "Открывай игру по кнопке:",
+        "play.no_url": "Mini App ещё не подключён — попробуй позже.",
+        "season.sprint": "Спринт",
+        "season.week": "Неделя",
+        "tier.bronze": "Бронза",
+        "tier.silver": "Серебро",
+        "tier.gold": "Золото",
+        "tier.platinum": "Платина",
+        "tier.diamond": "Алмаз",
+        "rank.title": "🏆 <b>Твои сезоны</b> · лига: {tier}",
+        "rank.line": "{season}: {place} · {ret:+.2f}% · сделок: {trades}",
+        "rank.place": "#{rank} из {total}",
+        "rank.unranked": "без места (нужно ≥ 5 сделок)",
+        "rank.best_ai": "🤖 Лучший ИИ недели: {nickname} {ret:+.2f}%",
+        "rank.ref": "Позови друга: {link}",
+        "learn.soon": "📚 Уроки скоро появятся. А пока — практикуйся в игре: /play",
+        "settings.title": "⚙️ <b>Настройки</b>\nУведомления (не больше 3 в день):",
+        "settings.notify_overtaken": "Меня обогнали в лиге",
+        "settings.notify_ai_open": "ИИ открыл позицию (Pro)",
+        "settings.notify_season_end": "Сезон кончается через час",
+        "settings.lang": "🌐 Language: English",
+        "help.text": (
+            "<b>VEYDRANOX</b> — учебная игра в трейдинг против ИИ.\n\n"
+            "/play — открыть игру\n"
+            "/rank — места в сезонах и реф-ссылка\n"
+            "/learn — уроки\n"
+            "/settings — уведомления и язык\n"
+            "/help — эта справка\n"
+            "/league — частная лига (в группе)\n\n{disclaimer}"
         ),
-        "subs.symbol_not_supported": (
-            "Символ не поддерживается или не найден: {symbol}\n\n"
-            "Примеры доступных символов:\n{preview}"
+        "league.private": "Частные лиги живут в группах: добавь бота в чат и напиши там /league.",
+        "league.title": "🏁 <b>Лига чата «{title}»</b> — недельный сезон",
+        "league.empty": "Пока никого. Жми «Вступить»!",
+        "league.row": "{place}. {nickname} {ret:+.2f}% · {trades}",
+        "league.ai": "🤖",
+        "league.btn_join": "✋ Вступить",
+        "league.btn_refresh": "🔄 Обновить",
+        "league.joined": "Ты в лиге! Торгуй в недельном сезоне: /play в личке с ботом.",
+        "league.already": "Ты уже в этой лиге.",
+        "side.long": "лонг",
+        "side.short": "шорт",
+        "notify.overtaken": "📉 Тебя обогнали: теперь ты #{new_rank} в недельной группе (было #{old_rank}).",
+        "notify.ai_open": "🤖 {nickname} открыл {side} по {symbol}.",
+        "notify.season_end": "⏳ {season} закончится через час — открытые позиции закроются по рынку.",
+        "notify.footer": "Отключить: /settings",
+        "admin.stats": (
+            "<b>Админка</b>\nИгроков: {players} (+{new_24h} за 24 ч)\n"
+            "D1: {d1_kept}/{d1_total} · D7: {d7_kept}/{d7_total}\n"
+            "Активных в неделе: {week_active}\nСделок сегодня: {trades_today}"
         ),
-        # Signals / data readiness
-        "signals.dataset_empty": (
-            "Недостаточно данных для {symbol}.\n\n"
-            "Я запущу догрузку свечей и индикаторов для этой пары. "
-            "Попробуй снова через 1–2 минуты.\n\n"
-            "Если ты ещё не подписан(а), подпишись: /subscribe {symbol}"
-        ),
-        "signals.error_generic": "Ошибка при расчёте сигнала для {symbol}:\n{error}",
-        # Find
-        "find.usage": "Укажи текст для поиска. Пример:\n/find BTC\n/find AAVE\n/find DOGE",
-        # Available symbols
-        "markets.available_title": "📚 Доступные символы ({quote})\nСтраница {page}/{pages}\nВсего: {total}\n",
+        "admin.usage": "/admin · /admin ban|unban &lt;ник&gt; · /admin end|restart sprint|week",
+        "admin.banned": "{nickname} заблокирован.",
+        "admin.unbanned": "{nickname} разблокирован.",
+        "admin.not_found": "Игрок {nickname} не найден.",
+        "admin.ended": "Сезон #{old_id} ({kind}) завершён{pending}. Новый сезон #{new_id} открыт.",
+        "admin.pending": " — позиции закроются по первой свежей цене",
     },
     "en": {
-        # Generic
-        "common.ok": "Ok",
-        "common.error": "Error",
-        "common.close": "Close",
-        "common.refresh": "Refresh",
-        "common.prev": "Prev",
-        "common.next": "Next",
-        # Bot meta
-        "bot.welcome_title": "AI Crypto Trading Bot",
-        "bot.status_ok": "Bot is running нормально.",
-        "bot.ping_pong": "pong",
-        "bot.your_chat_id": "Your chat_id: {chat_id}",
-        # Mini app
-        "bot.miniapp_missing_url": (
-            "MINIAPP_URL is not configured.\n"
-            "Set a public HTTPS URL, for example:\n"
-            "MINIAPP_URL=https://your-domain.com/miniapp"
+        "disclaimer": (
+            "🎓 Educational game, 18+. Not investment advice, "
+            "the money is virtual, prices are from Binance."
         ),
-        "bot.miniapp_open": "Open the Mini App using the button below (and via the bottom menu):",
-        "bot.menu_pinned": "Done. Mini App is pinned in the chat menu (bottom-right button).",
-        # Subscriptions
-        "subs.none": "You have no subscriptions yet.",
-        "subs.list_title": "Your subscriptions:\n{symbols}",
-        "subs.subscribe_usage": (
-            "Provide a symbol. Examples:\n"
-            "/subscribe BTC\n"
-            "/subscribe ETH\n"
-            "/subscribe AAVE/USDT"
+        "banned": "Your account is banned.",
+        "btn.play": "🎮 Play",
+        "start.welcome": (
+            "Hi, <b>{nickname}</b>! This is VEYDRANOX — trading against AI.\n\n"
+            "Every season gives you virtual $10,000: the Sprint (24 h) and the Week with leagues. "
+            "Trade at real prices and try to beat the AI personas.\n\n{disclaimer}"
         ),
-        "subs.unsubscribe_usage": (
-            "Provide a symbol. Examples:\n"
-            "/unsubscribe BTC/USDT\n"
-            "/unsubscribe ETH\n"
-            "/unsubscribe SOL"
+        "play.open": "Open the game with the button:",
+        "play.no_url": "The Mini App is not connected yet — try again later.",
+        "season.sprint": "Sprint",
+        "season.week": "Week",
+        "tier.bronze": "Bronze",
+        "tier.silver": "Silver",
+        "tier.gold": "Gold",
+        "tier.platinum": "Platinum",
+        "tier.diamond": "Diamond",
+        "rank.title": "🏆 <b>Your seasons</b> · league: {tier}",
+        "rank.line": "{season}: {place} · {ret:+.2f}% · trades: {trades}",
+        "rank.place": "#{rank} of {total}",
+        "rank.unranked": "unranked (needs ≥ 5 trades)",
+        "rank.best_ai": "🤖 Best AI this week: {nickname} {ret:+.2f}%",
+        "rank.ref": "Invite a friend: {link}",
+        "learn.soon": "📚 Lessons are coming soon. Meanwhile, practice in the game: /play",
+        "settings.title": "⚙️ <b>Settings</b>\nNotifications (at most 3 a day):",
+        "settings.notify_overtaken": "Someone overtook me",
+        "settings.notify_ai_open": "AI opened a position (Pro)",
+        "settings.notify_season_end": "Season ends in an hour",
+        "settings.lang": "🌐 Язык: русский",
+        "help.text": (
+            "<b>VEYDRANOX</b> — an educational trading game against AI.\n\n"
+            "/play — open the game\n"
+            "/rank — season places and invite link\n"
+            "/learn — lessons\n"
+            "/settings — notifications and language\n"
+            "/help — this help\n"
+            "/league — private league (in a group)\n\n{disclaimer}"
         ),
-        "subs.symbol_not_supported": (
-            "Symbol is not supported or not found: {symbol}\n\n"
-            "Some available symbols:\n{preview}"
+        "league.private": "Private leagues live in groups: add the bot to a chat and send /league there.",
+        "league.title": "🏁 <b>«{title}» chat league</b> — week season",
+        "league.empty": "Nobody yet. Tap «Join»!",
+        "league.row": "{place}. {nickname} {ret:+.2f}% · {trades}",
+        "league.ai": "🤖",
+        "league.btn_join": "✋ Join",
+        "league.btn_refresh": "🔄 Refresh",
+        "league.joined": "You're in! Trade in the week season: /play in a private chat with the bot.",
+        "league.already": "You're already in this league.",
+        "side.long": "a long",
+        "side.short": "a short",
+        "notify.overtaken": "📉 You were overtaken: now #{new_rank} in your week group (was #{old_rank}).",
+        "notify.ai_open": "🤖 {nickname} opened {side} on {symbol}.",
+        "notify.season_end": "⏳ The {season} ends in an hour — open positions will be closed at market.",
+        "notify.footer": "Turn off: /settings",
+        "admin.stats": (
+            "<b>Admin</b>\nPlayers: {players} (+{new_24h} in 24 h)\n"
+            "D1: {d1_kept}/{d1_total} · D7: {d7_kept}/{d7_total}\n"
+            "Active this week: {week_active}\nTrades today: {trades_today}"
         ),
-        # Signals / data readiness
-        "signals.dataset_empty": (
-            "Not enough data for {symbol}.\n\n"
-            "I will fetch candles and compute indicators for this pair. "
-            "Try again in 1–2 minutes.\n\n"
-            "If you're not subscribed yet: /subscribe {symbol}"
-        ),
-        "signals.error_generic": "Failed to compute signal for {symbol}:\n{error}",
-        # Find
-        "find.usage": "Provide search text. Examples:\n/find BTC\n/find AAVE\n/find DOGE",
-        # Available symbols
-        "markets.available_title": "📚 Available symbols ({quote})\nPage {page}/{pages}\nTotal: {total}\n",
+        "admin.usage": "/admin · /admin ban|unban &lt;nick&gt; · /admin end|restart sprint|week",
+        "admin.banned": "{nickname} is banned.",
+        "admin.unbanned": "{nickname} is unbanned.",
+        "admin.not_found": "Player {nickname} not found.",
+        "admin.ended": "Season #{old_id} ({kind}) ended{pending}. New season #{new_id} is open.",
+        "admin.pending": " — positions close at the first fresh price",
     },
 }
 
@@ -159,8 +191,8 @@ def t(
     Translation helper.
 
     Usage:
-      t("bot.status_ok", lang="ru")
-      t("bot.your_chat_id", lang="en", chat_id=123)
+      t("banned", lang="ru")
+      t("rank.place", lang="en", rank=1, total=10)
 
     Fallback order:
       1) requested lang

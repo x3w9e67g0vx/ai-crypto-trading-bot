@@ -6,7 +6,6 @@ from alembic.config import Config
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import IntegrityError
 
-from app.core.db import LEGACY_TABLES
 from app.core.db.base import Base
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,9 +28,6 @@ def test_upgrade_creates_managed_tables(db_url):
     inspector = inspect(create_engine(db_url))
 
     for table in Base.metadata.sorted_tables:
-        if table.name in LEGACY_TABLES:
-            assert not inspector.has_table(table.name)
-            continue
         assert inspector.has_table(table.name), table.name
         columns = {column["name"] for column in inspector.get_columns(table.name)}
         assert columns == {column.name for column in table.columns}, table.name
@@ -68,3 +64,17 @@ def test_open_position_unique_index(db_url):
     with pytest.raises(IntegrityError):
         with engine.begin() as connection:
             connection.execute(insert, {"closed_at": None})
+
+
+def test_upgrade_drops_legacy_tables(db_url):
+    engine = create_engine(db_url)
+    with engine.begin() as connection:
+        connection.execute(text("CREATE TABLE signals (id INTEGER PRIMARY KEY)"))
+        connection.execute(text("CREATE TABLE telegram_subscriptions (id INTEGER PRIMARY KEY)"))
+
+    _upgrade(db_url)
+
+    inspector = inspect(engine)
+    assert not inspector.has_table("signals")
+    assert not inspector.has_table("telegram_subscriptions")
+    assert inspector.has_table("players")

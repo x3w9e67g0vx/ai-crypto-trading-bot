@@ -18,6 +18,9 @@ class Settings:
     OHLCV_LIMIT: int = int(os.getenv("OHLCV_LIMIT", "100"))
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     TELEGRAM_CHAT_ID: str = os.getenv("TELEGRAM_CHAT_ID", "")
+    # Owner's Telegram user id: the only one who can use the hidden /admin.
+    ADMIN_CHAT_ID: int | None = int(os.environ["ADMIN_CHAT_ID"]) if os.getenv("ADMIN_CHAT_ID", "").strip() else None
+    MINIAPP_URL: str = os.getenv("MINIAPP_URL", "").strip()
     DEFAULT_SYMBOLS: str = os.getenv("DEFAULT_SYMBOLS", "BTC/USDT,ETH/USDT,SOL/USDT")
 
     @property

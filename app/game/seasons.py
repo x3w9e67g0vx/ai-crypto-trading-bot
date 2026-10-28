@@ -40,6 +40,12 @@ def ensure_current_season(db: Session, kind: SeasonKind, now_ms: int) -> Season:
     return season
 
 
+def current_portfolio(db: Session, player: Player, kind: SeasonKind | str, now_ms: int) -> Portfolio:
+    """The player's portfolio in the running season of this kind, joining it if needed."""
+    season = ensure_current_season(db, SeasonKind(kind), now_ms)
+    return join_season(db, player, season, now_ms)
+
+
 def end_season_now(
     db: Session, kind: SeasonKind, quotes: QuoteBook, now_ms: int, *, settle: bool
 ) -> tuple[Season, Season, bool]:

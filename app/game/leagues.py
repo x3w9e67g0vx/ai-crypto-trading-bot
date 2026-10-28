@@ -45,6 +45,20 @@ def assign_group(db: Session, portfolio: Portfolio, season: Season, now_ms: int)
     return group
 
 
+def group_portfolio_ids(db: Session, portfolio: Portfolio) -> tuple[LeagueGroup | None, list[int] | None]:
+    """The portfolio's week league group and its members; (None, None) outside leagues."""
+    group = (
+        db.query(LeagueGroup)
+        .join(LeagueMembership, LeagueMembership.group_id == LeagueGroup.id)
+        .filter(LeagueMembership.portfolio_id == portfolio.id)
+        .one_or_none()
+    )
+    if group is None:
+        return None, None
+    ids = [portfolio_id for (portfolio_id,) in db.query(LeagueMembership.portfolio_id).filter_by(group_id=group.id)]
+    return group, ids
+
+
 def movement_count(group_size: int, qualified: int) -> int:
     if group_size >= LEAGUE_GROUP_SIZE:
         return LEAGUE_FULL_MOVE

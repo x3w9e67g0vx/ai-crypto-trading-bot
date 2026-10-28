@@ -3,9 +3,8 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-import app.core.db  # noqa: F401  registers all models on Base
 from app.core.config import settings
-from app.core.db import LEGACY_TABLES
+import app.core.db  # noqa: F401  registers all models on Base
 from app.core.db.base import Base
 
 config = context.config
@@ -18,15 +17,10 @@ if not config.get_main_option("sqlalchemy.url"):
 target_metadata = Base.metadata
 
 
-def include_object(obj, name, type_, reflected, compare_to):
-    return not (type_ == "table" and name in LEGACY_TABLES)
-
-
 def run_migrations_offline() -> None:
     context.configure(
         url=config.get_main_option("sqlalchemy.url"),
         target_metadata=target_metadata,
-        include_object=include_object,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
     )
@@ -44,8 +38,7 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
-            include_object=include_object,
-            render_as_batch=connection.dialect.name == "sqlite",
+                render_as_batch=connection.dialect.name == "sqlite",
         )
         with context.begin_transaction():
             context.run_migrations()
