@@ -43,3 +43,6 @@ class QuoteBook:
         if not self._quotes:
             return None
         return max(quote.ts for quote in self._quotes.values())
+
+    def all(self) -> list[Quote]:
+        return list(self._quotes.values())

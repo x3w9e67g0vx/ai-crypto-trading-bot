@@ -265,3 +265,15 @@ class ChannelPost(Base):
     # UTC date for daily slots, season id for results.
     key = Column(String, nullable=False)
     created_at = Column(BigInteger, nullable=False, index=True)
+
+
+class StoredQuote(Base):
+    """Latest Binance bid/ask, written by the price worker and copied by the other processes."""
+
+    __tablename__ = "quotes"
+
+    symbol = Column(String, primary_key=True)
+    bid = Column(Float, nullable=False)
+    ask = Column(Float, nullable=False)
+    # When the worker received the quote; consumers judge staleness by it.
+    ts = Column(BigInteger, nullable=False)
