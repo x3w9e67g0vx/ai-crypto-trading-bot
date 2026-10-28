@@ -36,6 +36,11 @@ class Player(Base):
     is_pro_until = Column(BigInteger, nullable=True)
     referred_by_id = Column(Integer, ForeignKey("players.id"), nullable=True)
 
+    # Bot notifications, each one can be switched off in /settings.
+    notify_overtaken = Column(Boolean, nullable=False, default=True, server_default=text("true"))
+    notify_ai_open = Column(Boolean, nullable=False, default=True, server_default=text("true"))
+    notify_season_end = Column(Boolean, nullable=False, default=True, server_default=text("true"))
+
     created_at = Column(BigInteger, nullable=False)
 
 
@@ -151,6 +156,8 @@ class LeagueMembership(Base):
     group_id = Column(Integer, ForeignKey("league_groups.id"), nullable=False, index=True)
     portfolio_id = Column(Integer, ForeignKey("portfolios.id"), nullable=False, unique=True)
     joined_at = Column(BigInteger, nullable=False)
+    # Group rank at the last notification check; a worse rank means "you were overtaken".
+    last_rank = Column(Integer, nullable=True)
 
 
 class Badge(Base):
@@ -179,3 +186,52 @@ class AiDecision(Base):
     probability_up = Column(Float, nullable=False)
     view = Column(String, nullable=False)  # bullish | bearish | neutral
     created_at = Column(BigInteger, nullable=False)
+
+
+class Notification(Base):
+    """A bot notification sent to a player; the unique key stops repeats of one event."""
+
+    __tablename__ = "notifications"
+    __table_args__ = (
+        UniqueConstraint("player_id", "kind", "key", name="uq_notification_event"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    player_id = Column(Integer, ForeignKey("players.id"), nullable=False, index=True)
+    kind = Column(String, nullable=False)  # overtaken | ai_open | season_end
+    key = Column(String, nullable=False)
+    created_at = Column(BigInteger, nullable=False, index=True)
+
+
+class ChatLeague(Base):
+    """Private league of a Telegram group: a table of its members' week portfolios."""
+
+    __tablename__ = "chat_leagues"
+
+    id = Column(Integer, primary_key=True, index=True)
+    chat_id = Column(BigInteger, nullable=False, unique=True, index=True)
+    title = Column(String, nullable=False)
+    created_at = Column(BigInteger, nullable=False)
+
+
+class ChatLeagueMember(Base):
+    __tablename__ = "chat_league_members"
+    __table_args__ = (
+        UniqueConstraint("league_id", "player_id", name="uq_chat_league_member"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    league_id = Column(Integer, ForeignKey("chat_leagues.id"), nullable=False, index=True)
+    player_id = Column(Integer, ForeignKey("players.id"), nullable=False, index=True)
+    joined_at = Column(BigInteger, nullable=False)
+
+
+class Event(Base):
+    """Analytics event (start, trade, return, ...); retention is computed from these."""
+
+    __tablename__ = "events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    player_id = Column(Integer, ForeignKey("players.id"), nullable=False, index=True)
+    kind = Column(String, nullable=False, index=True)
+    created_at = Column(BigInteger, nullable=False, index=True)

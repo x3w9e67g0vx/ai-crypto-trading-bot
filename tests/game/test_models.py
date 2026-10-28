@@ -21,3 +21,33 @@ def test_ai_player_has_no_telegram_id(db):
     db.flush()
     assert db.query(Player).filter_by(is_ai=True).count() == 2
     assert db.query(Player).first().league_tier == "bronze"
+
+
+def test_notification_unique_per_key(db):
+    from app.game.models import Notification
+
+    player = make_player(db, telegram_id=1)
+    db.add(Notification(player_id=player.id, kind="season_end", key="7", created_at=NOW))
+    db.flush()
+    db.add(Notification(player_id=player.id, kind="season_end", key="7", created_at=NOW + 1))
+    with pytest.raises(IntegrityError):
+        db.flush()
+
+
+def test_chat_league_member_unique(db):
+    from app.game.models import ChatLeague, ChatLeagueMember
+
+    player = make_player(db, telegram_id=1)
+    league = ChatLeague(chat_id=-100, title="chat", created_at=NOW)
+    db.add(league)
+    db.flush()
+    db.add(ChatLeagueMember(league_id=league.id, player_id=player.id, joined_at=NOW))
+    db.flush()
+    db.add(ChatLeagueMember(league_id=league.id, player_id=player.id, joined_at=NOW))
+    with pytest.raises(IntegrityError):
+        db.flush()
+
+
+def test_new_player_has_notifications_enabled(db):
+    player = make_player(db, telegram_id=1)
+    assert (player.notify_overtaken, player.notify_ai_open, player.notify_season_end) == (True, True, True)
