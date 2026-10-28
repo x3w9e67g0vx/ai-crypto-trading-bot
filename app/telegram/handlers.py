@@ -90,6 +90,9 @@ async def help_command(message: Message, session_factory, clock) -> None:
 async def settings_command(message: Message, session_factory, clock) -> None:
     with session_factory() as db:
         player, _ = start_player(db, tg_user(message.from_user), clock())
+        if player.is_banned:
+            await message.answer(t("banned", lang=player.language))
+            return
         text, keyboard = views.settings_view(player)
     await message.answer(text, reply_markup=keyboard)
 
@@ -98,6 +101,9 @@ async def settings_toggle(callback: CallbackQuery, session_factory, clock) -> No
     option = callback.data.removeprefix("set:")
     with session_factory() as db:
         player, _ = start_player(db, tg_user(callback.from_user), clock())
+        if player.is_banned:
+            await callback.answer(t("banned", lang=player.language), show_alert=True)
+            return
         if option == "lang":
             player.language = "en" if player.language == "ru" else "ru"
         elif option in views.NOTIFY_FLAGS:

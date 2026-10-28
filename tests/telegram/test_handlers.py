@@ -39,7 +39,7 @@ def test_banned_player_gets_banned_text(harness, session_factory):
         db.query(Player).update({"is_banned": True})
         db.commit()
 
-    for command in ("/start", "/rank", "/play"):
+    for command in ("/start", "/rank", "/play", "/learn", "/settings"):
         [text] = texts(harness.message(command))
         assert "заблокирован" in text
 
@@ -146,3 +146,14 @@ def test_learn_without_miniapp_url(session_factory):
         db.flush()
         text, keyboard = learn_view(db, player, "")
     assert "Level 1" in text and keyboard is None
+
+
+def test_banned_player_cannot_toggle_settings(harness, session_factory):
+    harness.message("/start")
+    with session_factory() as db:
+        db.query(Player).update({"is_banned": True})
+        db.commit()
+
+    harness.callback("set:notify_overtaken")
+
+    assert _player(session_factory).notify_overtaken is True
