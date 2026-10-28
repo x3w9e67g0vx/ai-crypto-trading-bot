@@ -388,6 +388,8 @@ DAG-и также поддерживают совместимость со ст�
 
 ### Telegram
 - `TELEGRAM_BOT_TOKEN` (обязательно для бота и Telegram-уведомлений из API)
+- `ADMIN_CHAT_ID` (Telegram user id владельца — только ему доступна скрытая `/admin`)
+- `GAME_PRICE_FEED` (default: `1`; `0` отключает Binance WebSocket в API и боте)
 - `TELEGRAM_CHAT_ID` (опционально, используется для одиночных “send to one chat” endpoint’ов)
 - `DEFAULT_SYMBOLS` (например: `BTC/USDT,ETH/USDT,SOL/USDT`)
 

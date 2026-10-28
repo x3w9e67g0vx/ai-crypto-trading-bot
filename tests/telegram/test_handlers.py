@@ -105,3 +105,13 @@ def test_league_in_private_explains_groups(harness):
 def test_nickname_is_escaped(harness):
     calls = harness.message("/league", chat_id=-100, chat_type="group", title="<b>x</b>")
     assert "&lt;b&gt;x&lt;/b&gt;" in texts(calls)[0]
+
+
+def test_cannot_join_league_of_another_chat(harness, session_factory):
+    calls = harness.message("/league", chat_id=-100, chat_type="supergroup", title="Friends")
+    join = next(button for button in buttons(calls[-1]) if button.callback_data.startswith("league:join:"))
+
+    harness.callback(join.callback_data, chat_id=-200, chat_type="supergroup")
+
+    with session_factory() as db:
+        assert db.query(ChatLeagueMember).count() == 0

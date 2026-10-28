@@ -124,7 +124,8 @@ async def league_callback(callback: CallbackQuery, session_factory, quotes, cloc
     lang = normalize_lang(callback.from_user.language_code)
     with session_factory() as db:
         league = db.get(ChatLeague, int(league_id)) if league_id.isdigit() else None
-        if league is None:
+        # Callback data comes from the client: only the league of this very chat counts.
+        if league is None or callback.message is None or league.chat_id != callback.message.chat.id:
             await callback.answer()
             return
         notice = None
