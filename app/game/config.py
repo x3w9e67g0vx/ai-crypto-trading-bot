@@ -80,3 +80,9 @@ PAIR_UNLOCKS = {
     9: ("PEPE/USDT", "SHIB/USDT"),
     10: ("UNI/USDT",),
 }
+
+# Micro lessons and trade reviews read indicators from closed chart candles.
+INSIGHT_MIN_CANDLES = 30
+INSIGHT_MAX_AGE_MS = 15 * 60 * 1000
+MAX_TIPS_PER_ORDER = 2
+BIG_POSITION_SHARE = 0.25
