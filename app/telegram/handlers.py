@@ -70,11 +70,14 @@ async def rank(message: Message, session_factory, quotes, clock, bot_username: s
     await message.answer(text, disable_web_page_preview=True)
 
 
-async def learn(message: Message, session_factory, clock) -> None:
+async def learn(message: Message, session_factory, clock, miniapp_url: str) -> None:
     with session_factory() as db:
         player, _ = start_player(db, tg_user(message.from_user), clock())
-        lang = player.language
-    await message.answer(t("learn.soon", lang=lang))
+        if player.is_banned:
+            await message.answer(t("banned", lang=player.language))
+            return
+        text, keyboard = views.learn_view(db, player, miniapp_url)
+    await message.answer(text, reply_markup=keyboard)
 
 
 async def help_command(message: Message, session_factory, clock) -> None:

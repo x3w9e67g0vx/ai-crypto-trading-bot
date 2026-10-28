@@ -8,11 +8,13 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from sqlalchemy.orm import Session
 
 from app.game.chat_leagues import chat_league_table
-from app.game.config import SeasonKind
+from app.game.config import XP_PER_LESSON, XP_PER_TRADE, SeasonKind
 from app.game.leaderboard import standings
 from app.game.leagues import group_portfolio_ids
+from app.game.lessons import get_lessons
 from app.game.models import ChatLeague, Player
 from app.game.quotes import QuoteBook
+from app.game.progress import completed_lessons, level_info
 from app.game.referrals import ref_link
 from app.game.seasons import current_portfolio
 from app.i18n.strings import t
@@ -42,6 +44,24 @@ def play_view(player: Player, miniapp_url: str) -> Screen:
     if not miniapp_url:
         return t("play.no_url", lang=lang), None
     return t("play.open", lang=lang), play_keyboard(lang, miniapp_url)
+
+
+def learn_view(db: Session, player: Player, miniapp_url: str) -> Screen:
+    """Level, XP and the lesson list with passed ones ticked; the button opens the lessons tab."""
+    lang = player.language
+    level = level_info(player.xp)
+    next_text = "" if level.next_level_xp is None else t("learn.next", lang=lang, need=level.next_level_xp - player.xp)
+    done = completed_lessons(db, player)
+    lines = [t("learn.title", lang=lang, level=level.level, xp=player.xp, next=next_text), ""]
+    for lesson in get_lessons(lang):
+        mark = "✅" if lesson.id in done else "▫️"
+        lines.append(f"{mark} {escape(lesson.title)}")
+    lines += ["", t("learn.footer", lang=lang, xp=XP_PER_LESSON, trade_xp=XP_PER_TRADE)]
+    keyboard = None
+    if miniapp_url:
+        button = InlineKeyboardButton(text=t("btn.lessons", lang=lang), web_app=WebAppInfo(url=f"{miniapp_url}#learn"))
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[[button]])
+    return "\n".join(lines), keyboard
 
 
 def rank_view(db: Session, player: Player, quotes: QuoteBook, now_ms: int, bot_username: str) -> str:

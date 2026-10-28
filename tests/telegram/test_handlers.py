@@ -115,3 +115,34 @@ def test_cannot_join_league_of_another_chat(harness, session_factory):
 
     with session_factory() as db:
         assert db.query(ChatLeagueMember).count() == 0
+
+
+def test_learn_lists_lessons_with_progress(harness, session_factory):
+    from app.game.lessons import get_lesson
+    from app.game.progress import complete_lesson
+
+    harness.message("/start")
+    with session_factory() as db:
+        player = db.query(Player).filter_by(telegram_id=1001).one()
+        lesson = get_lesson("ru", "01")
+        complete_lesson(db, player, lesson, lesson.answer, harness.clock["now"])
+        db.commit()
+
+    calls = harness.message("/learn")
+    [text] = texts(calls)
+    assert "Уровень 1" in text and "50 XP" in text
+    assert f"✅ {lesson.title}" in text
+    assert get_lesson("ru", "10").title in text
+    [button] = [button for button in buttons(calls[-1]) if button.web_app]
+    assert button.web_app.url == "https://example.test/miniapp#learn"
+
+
+def test_learn_without_miniapp_url(session_factory):
+    from app.telegram.views import learn_view
+
+    with session_factory() as db:
+        player = Player(telegram_id=1, nickname="alice", language="en", xp=0, created_at=0)
+        db.add(player)
+        db.flush()
+        text, keyboard = learn_view(db, player, "")
+    assert "Level 1" in text and keyboard is None
