@@ -89,6 +89,14 @@ STRINGS: dict[str, dict[str, str]] = {
         "admin.not_found": "Игрок {nickname} не найден.",
         "admin.ended": "Сезон #{old_id} ({kind}) завершён{pending}. Новый сезон #{new_id} открыт.",
         "admin.pending": " — позиции закроются по первой свежей цене",
+        "card.tagline": "трейдинг против ИИ",
+        "card.season.week": "за неделю",
+        "card.season.sprint": "за спринт",
+        "card.rank": "#{rank} в рейтинге",
+        "card.unranked": "без места: нужно 5 сделок",
+        "card.beat_ai": "ИИ позади на {margin:.1f}%",
+        "card.behind_ai": "Попробуй обойти ИИ",
+        "card.footer": "Образовательная игра 18+ · деньги виртуальные · цены Binance",
     },
     "en": {
         "disclaimer": (
@@ -161,6 +169,14 @@ STRINGS: dict[str, dict[str, str]] = {
         "admin.not_found": "Player {nickname} not found.",
         "admin.ended": "Season #{old_id} ({kind}) ended{pending}. New season #{new_id} is open.",
         "admin.pending": " — positions close at the first fresh price",
+        "card.tagline": "trading against AI",
+        "card.season.week": "this week",
+        "card.season.sprint": "this sprint",
+        "card.rank": "#{rank} in the ranking",
+        "card.unranked": "no place yet: 5 trades needed",
+        "card.beat_ai": "AI left behind by {margin:.1f}%",
+        "card.behind_ai": "Try to beat the AI",
+        "card.footer": "Educational game 18+ · virtual money · Binance prices",
     },
 }
 
