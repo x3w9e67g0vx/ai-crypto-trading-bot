@@ -97,3 +97,15 @@ def test_banned_player_forbidden(client, db):
 
     assert response.status_code == 403
     assert response.json()["detail"]["code"] == "banned"
+
+
+def test_first_visit_logs_start_and_return(client, db, clock):
+    from app.game.models import Event
+
+    client.get("/game/me", headers=auth(ALICE))
+    client.get("/game/me", headers=auth(ALICE))
+    assert sorted(kind for (kind,) in db.query(Event.kind)) == ["return", "start"]
+
+    clock["now"] = NOW + 24 * 60 * 60 * 1000
+    client.get("/game/me", headers=auth(ALICE))
+    assert sorted(kind for (kind,) in db.query(Event.kind)) == ["return", "return", "start"]

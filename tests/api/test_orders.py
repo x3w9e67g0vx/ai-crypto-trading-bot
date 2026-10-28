@@ -107,3 +107,11 @@ def test_positions_open_and_closed(client, quotes, clock):
     assert [row["id"] for row in closed_rows] == [eth["id"]]
     assert closed_rows[0]["pnl"] is not None
     assert client.get("/game/positions", params={"season": "sprint"}, headers=auth()).json() == []
+
+
+def test_order_logs_trade(client, db):
+    from app.game.models import Event
+
+    assert _order(client).status_code == 200
+    assert _order(client, symbol="ETH/USDT", amount_usdt=10**9).status_code == 409
+    assert [kind for (kind,) in db.query(Event.kind).filter_by(kind="trade")] == ["trade"]

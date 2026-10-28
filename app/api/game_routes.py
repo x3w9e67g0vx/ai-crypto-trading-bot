@@ -11,6 +11,7 @@ from app.api.game_deps import current_player, get_now_ms, get_quotes
 from app.core.db.dependencies import get_db
 from app.core.db.models import Candle
 from app.game.ai_personas import PERSONAS
+from app.game.analytics import log_event
 from app.game.ai_view import ai_decisions_view, ai_positions_view, is_pro
 from app.game.config import (
     CHART_TIMEFRAME,
@@ -98,6 +99,7 @@ def get_me(
     quotes: QuoteBook = Depends(get_quotes),
     now_ms: int = Depends(get_now_ms),
 ) -> dict:
+    log_event(db, player, "return", now_ms, once_per_day=True)
     return _me_json(db, player, quotes, now_ms)
 
 
@@ -229,6 +231,7 @@ def place_order(
             stop_loss=order.stop_loss,
             take_profit=order.take_profit,
         )
+        log_event(db, player, "trade", now_ms)
         db.commit()
     except IntegrityError:
         # A parallel order for the same pair won the race (unique open-position index).

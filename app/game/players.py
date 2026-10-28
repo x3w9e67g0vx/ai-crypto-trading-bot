@@ -6,6 +6,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.game.analytics import log_event
 from app.game.config import STARTER_SYMBOLS
 from app.game.errors import InvalidNickname, NicknameTaken
 from app.game.models import Player
@@ -40,6 +41,8 @@ def get_or_create_player(db: Session, tg_user: dict, now_ms: int) -> Player:
     )
     db.add(player)
     try:
+        db.flush()
+        log_event(db, player, "start", now_ms)
         db.commit()
     except IntegrityError:
         # A parallel first request created the player first.
