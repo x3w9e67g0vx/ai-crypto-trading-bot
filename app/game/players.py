@@ -26,12 +26,15 @@ def _language(tg_user: dict) -> str:
     return "ru" if str(tg_user.get("language_code") or "").lower().startswith("ru") else "en"
 
 
-def get_or_create_player(db: Session, tg_user: dict, now_ms: int) -> Player:
-    """Player for a Telegram user; the first visit creates it with a Telegram-based nickname."""
+def start_player(db: Session, tg_user: dict, now_ms: int) -> tuple[Player, bool]:
+    """Player for a Telegram user and whether this call created it.
+
+    The first visit (bot or Mini App) creates the player with a Telegram-based nickname.
+    """
     telegram_id = int(tg_user["id"])
     player = db.query(Player).filter_by(telegram_id=telegram_id).one_or_none()
     if player is not None:
-        return player
+        return player, False
 
     player = Player(
         telegram_id=telegram_id,
@@ -47,8 +50,12 @@ def get_or_create_player(db: Session, tg_user: dict, now_ms: int) -> Player:
     except IntegrityError:
         # A parallel first request created the player first.
         db.rollback()
-        player = db.query(Player).filter_by(telegram_id=telegram_id).one()
-    return player
+        return db.query(Player).filter_by(telegram_id=telegram_id).one(), False
+    return player, True
+
+
+def get_or_create_player(db: Session, tg_user: dict, now_ms: int) -> Player:
+    return start_player(db, tg_user, now_ms)[0]
 
 
 def validate_nickname(db: Session, player: Player, nickname: str) -> str:
