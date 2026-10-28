@@ -402,7 +402,7 @@
 **Решения строителя (спека §6 оставила их строителю):**
 - **Уроки** — `content/lessons/{ru,en}/NN-slug.md`, один файл на урок и язык. Шапка между `---` в формате `ключ: значение`: `id` (`01`…`10`), `title`, `question`, `options` (варианты через ` | `), `answer` (номер верного варианта с 0). Тело — ограниченный markdown: `## заголовок`, абзацы, `- пункт`, `**жирный**`. Сервер разбирает тело в блоки `{"type": "h"|"p"|"li", "text"}`, клиент экранирует текст и подсвечивает `**…**`. Черновики 10 уроков пишет Claude, пользователь их вычитывает (спека §3 и §4.6).
 - **Темы уроков:** 01 биржа: bid/ask, спред, комиссия; 02 лонг и шорт; 03 размер позиции и риск; 04 стоп-лосс и тейк-профит; 05 свечи и таймфреймы; 06 тренд и EMA; 07 RSI: перекупленность и перепроданность; 08 MACD; 09 психология: FOMO, отыгрыш, овертрейдинг; 10 как думают ИИ-модели и почему они ошибаются.
-- **Урок засчитывается** после верного ответа на один вопрос. Все уроки открыты сразу, порядок не обязателен. Неверный ответ → `WrongAnswer` (400) без штрафа. Повторное прохождение даёт 0 XP. Пишется событие `lesson_done`.
+- **Урок засчитывается** после верного ответа на один вопрос. Все уроки открыты сразу, порядок не обязателен. Неверный ответ → `WrongAnswer` (409, как прочие нарушения правил) без штрафа. Повторное прохождение даёт 0 XP. Пишется событие `lesson_done`.
 - **XP:** урок — 50 (один раз), закрытая позиция игрока — 10 (по любой причине, в том числе SL/TP и конец сезона; у ИИ XP нет). XP не убывает.
 - **Уровни:** `LEVEL_XP = (0, 100, 250, 450, 700, 1000, 1400, 1900, 2500, 3200)`, уровень 1…10. **Открытие пар:** 2 — BNB, XRP; 3 — DOGE, ADA; 4 — TRX, AVAX; 5 — LINK, TON; 6 — SUI, DOT; 7 — LTC, BCH; 8 — NEAR, APT; 9 — PEPE, SHIB; 10 — UNI. Pro пары не открывает. Открытая пара остаётся открытой.
 - **Индикаторы для подсказок и разборов** — `indicators_at(db, symbol, ts)`: закрытые к `ts` 5m-свечи (до 100 штук) из `candles`, `IndicatorService.calculate_indicators`. Даёт RSI14, EMA12/EMA26 и тренд (`up`, если EMA12 > EMA26). Если свечей < 30 или последняя закрылась больше 15 мин назад — `None`, и подсказки/блок индикаторов пропускаются.
@@ -445,7 +445,7 @@
 
 ### Task 33: API обучения
 **Files:** Modify `app/api/game_routes.py`; Test `tests/api/test_lessons.py`, `tests/api/test_orders.py`, `tests/api/test_me.py`
-- [ ] **Step 1: Тесты** `test_lessons_list_in_player_language`, `test_lesson_detail_hides_answer`, `test_complete_lesson_api_idempotent` (RF1), `test_wrong_answer_400`, `test_unknown_lesson_404`, `test_me_has_level`, `test_order_returns_tips`, `test_level_unlocks_trading_pair`, `test_review_own_closed_position`, `test_review_foreign_or_open_is_404` (RF2).
+- [ ] **Step 1: Тесты** `test_lessons_list_in_player_language`, `test_lesson_detail_hides_answer`, `test_complete_lesson_api_idempotent` (RF1), `test_wrong_answer_rejected`, `test_unknown_lesson_404`, `test_me_has_level`, `test_order_returns_tips`, `test_level_unlocks_trading_pair`, `test_review_own_closed_position`, `test_review_foreign_or_open_is_404` (RF2).
 - [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(api): add lessons, tips and trade review endpoints`.
 
 ### Task 34: `/learn` в боте
