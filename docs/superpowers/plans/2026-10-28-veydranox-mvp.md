@@ -457,7 +457,7 @@
 **Files:** Modify `static/miniapp/app.js`, `static/miniapp/style.css`, `static/miniapp/i18n.json`; Test `tests/api/test_miniapp_i18n.py` (`test_i18n_covers_tips_and_notes` — у каждого кода подсказки и вывода разбора есть строки RU/EN)
 - [x] **Step 1–5:** тест FAIL → вкладка уроков, прогресс в профиле, тост подсказки, экран разбора → PASS → ручная проверка `node --check` → commit `feat(miniapp): lessons, levels, tips and reviews`.
 
-## Фаза 6 — Канал и шеринг (детально)
+## Фаза 6 — Канал и шеринг (детально) — ✅ выполнена, 244 теста всего
 
 **Решения строителя (спека §4.7, §4.9, §6):**
 - **Где работает.** Публикатор канала крутится в процессе бота, как уведомления: проход раз в минуту. В фазе 7 переезжает в общий планировщик. Канал — env `CHANNEL_ID` (`@name` или `-100…`), пусто — публикация выключена. API берёт имя бота для реф-ссылок из env `BOT_USERNAME`.
@@ -485,36 +485,36 @@
 
 ### Task 36: Таблица постов, конфиг, зависимости
 **Files:** Modify `app/game/models.py` (`ChannelPost(kind, key, created_at)`, unique `(kind, key)`), `app/game/config.py` (`CHANNEL_SLOTS = {"morning": 6 ч, "lesson": 10 ч, "evening": 18 ч}`, `CHANNEL_SLOT_WINDOW_MS`, `CHANNEL_RESULTS_WINDOW_MS`), `app/core/config.py` (`CHANNEL_ID`, `BOT_USERNAME`), `requirements.txt` (`matplotlib` и зависимости); Create `alembic/versions/0005_channel_posts.py`; Test `tests/game/test_models.py`, `tests/test_migrations.py`
-- [ ] **Step 1: Тесты** `test_upgrade_creates_managed_tables` покрывает новую таблицу; `test_channel_post_unique`.
-- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(db): add channel posts`.
+- [x] **Step 1: Тесты** `test_upgrade_creates_managed_tables` покрывает новую таблицу; `test_channel_post_unique`.
+- [x] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(db): add channel posts`.
 
 ### Task 37: Графики и карточка
 **Files:** Create `app/game/charts.py`; Test `tests/game/test_charts.py`
 **Interfaces:** `candle_chart(candles: list[Candle], *, title: str, markers: Sequence[tuple[int, float, str]] = ()) -> bytes | None` (маркер — `(ts_ms, price, "entry"|"exit")`; меньше 2 свечей → `None`); `share_card(*, nickname, season, return_pct, rank, beat_ai_by, lang) -> bytes`.
-- [ ] **Step 1: Тесты** `test_candle_chart_png` (сигнатура PNG, размер 1200×675), `test_candle_chart_needs_candles`, `test_chart_with_markers`, `test_share_card_png` (1080×1920, кириллический ник без предупреждений о глифах).
-- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(channel): render charts and share cards`.
+- [x] **Step 1: Тесты** `test_candle_chart_png` (сигнатура PNG, размер 1200×675), `test_candle_chart_needs_candles`, `test_chart_with_markers`, `test_share_card_png` (1080×1920, кириллический ник без предупреждений о глифах).
+- [x] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(channel): render charts and share cards`.
 
 ### Task 38: Посты канала
 **Files:** Create `app/game/channel.py`; Modify `app/i18n/strings.py` (`channel.*`); Test `tests/game/test_channel.py`
 **Interfaces:** `Post(kind, key, text, image: bytes | None)`; `morning_post(db, now_ms, bot_username)`, `lesson_post(...)`, `evening_post(db, quotes, now_ms, bot_username)`, `season_post(db, season, quotes, now_ms, bot_username)`, `ai_move_post(db, season, now_ms, bot_username) -> Post | None`.
-- [ ] **Step 1: Тесты** `test_morning_post_lists_pairs_and_ai`, `test_morning_hides_fresh_ai_opinions` (RF3), `test_lesson_post_picks_rsi_lesson`, `test_lesson_post_rotates`, `test_lesson_post_without_candles` (RF6), `test_evening_post_top_and_trade_of_day`, `test_evening_skips_banned_and_ai` (RF4), `test_season_post_results_and_badges`, `test_ai_move_post_best_trade_with_chart`, `test_posts_skip_without_data` (RF6), `test_posts_end_with_disclaimer_and_link`.
-- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(channel): add channel post templates`.
+- [x] **Step 1: Тесты** `test_morning_post_lists_pairs_and_ai`, `test_morning_hides_fresh_ai_opinions` (RF3), `test_lesson_post_picks_rsi_lesson`, `test_lesson_post_rotates`, `test_lesson_post_without_candles` (RF6), `test_evening_post_top_and_trade_of_day`, `test_evening_skips_banned_and_ai` (RF4), `test_season_post_results_and_badges`, `test_ai_move_post_best_trade_with_chart`, `test_posts_skip_without_data` (RF6), `test_posts_end_with_disclaimer_and_link`.
+- [x] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(channel): add channel post templates`.
 
 ### Task 39: Расписание и публикатор
 **Files:** Modify `app/game/channel.py` (`due_posts`), `app/telegram/bot.py` (запуск при `CHANNEL_ID`), `app/telegram/admin.py` (`/admin post <kind>`), `app/i18n/strings.py`; Create `app/telegram/channel.py`; Test `tests/game/test_channel.py`, `tests/telegram/test_channel.py`, `tests/telegram/test_admin.py`
 **Interfaces:** `due_posts(db, quotes, now_ms, bot_username) -> list[Post]` (записывает `ChannelPost`); `send_post(bot, chat_id, post)`; `publish_once(bot, session_factory, quotes, channel_id, bot_username, now_ms) -> int`; `run_channel(...)`.
-- [ ] **Step 1: Тесты** `test_due_posts_slots`, `test_due_posts_once` (RF1), `test_slot_post_expires` (RF2), `test_season_posts_after_finish_only`, `test_publish_sends_photo_with_caption`, `test_long_caption_split` (RF7), `test_publish_survives_send_error`, `test_admin_post_preview_not_recorded`.
-- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(channel): schedule and publish channel posts`.
+- [x] **Step 1: Тесты** `test_due_posts_slots`, `test_due_posts_once` (RF1), `test_slot_post_expires` (RF2), `test_season_posts_after_finish_only`, `test_publish_sends_photo_with_caption`, `test_long_caption_split` (RF7), `test_publish_survives_send_error`, `test_admin_post_preview_not_recorded`.
+- [x] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(channel): schedule and publish channel posts`.
 
 ### Task 40: API шеринга
 **Files:** Create `app/game/share.py`; Modify `app/api/game_routes.py`, `app/i18n/strings.py` (`share.*`, `card.*`); Test `tests/game/test_share.py`, `tests/api/test_share.py`
 **Interfaces:** `ShareInfo(return_pct, rank, beat_ai_by)`; `share_info(db, portfolio, quotes, now_ms) -> ShareInfo`; `card_sig(portfolio_id) -> str`.
-- [ ] **Step 1: Тесты** `test_share_info_beat_ai`, `test_share_info_behind_ai`, `test_share_returns_text_link_and_logs_event`, `test_share_without_bot_username_has_no_link`, `test_share_card_png`, `test_share_card_bad_signature_404` (RF5).
-- [ ] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(api): add share cards`.
+- [x] **Step 1: Тесты** `test_share_info_beat_ai`, `test_share_info_behind_ai`, `test_share_returns_text_link_and_logs_event`, `test_share_without_bot_username_has_no_link`, `test_share_card_png`, `test_share_card_bad_signature_404` (RF5).
+- [x] **Step 2–5:** FAIL → реализовать → PASS → commit `feat(api): add share cards`.
 
 ### Task 41: Mini App — «Поделиться»
 **Files:** Modify `static/miniapp/app.js`, `static/miniapp/style.css`, `static/miniapp/i18n.json`; Test `tests/api/test_miniapp_i18n.py` (ключи `share.*`)
-- [ ] **Step 1–5:** тест FAIL → кнопка в профиле, модалка с превью, «Отправить другу», «В сторис» → PASS → `node --check` → commit `feat(miniapp): share card`.
+- [x] **Step 1–5:** тест FAIL → кнопка в профиле, модалка с превью, «Отправить другу», «В сторис» → PASS → `node --check` → commit `feat(miniapp): share card`.
 
 ## Фазы 2–7 — дорожная карта (детальный план на каждую — перед стартом фазы)
 
