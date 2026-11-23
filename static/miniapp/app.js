@@ -847,7 +847,7 @@
                     toast(errorText(error));
                 }
                 // Re-render: the card comes back answered and the level card picks up the XP.
-                go("learn");
+                if (state.tab === "learn") go("learn");
             };
         });
         screen.querySelectorAll("[data-puzzle-lesson]").forEach((button) => {
@@ -879,7 +879,11 @@
         screen.querySelectorAll("[data-lesson]").forEach((button) => {
             button.onclick = () => lessonScreen(button.dataset.lesson);
         });
-        if (puzzle) bindPuzzle(puzzle);
+        try {
+            if (puzzle) bindPuzzle(puzzle);
+        } catch (error) {
+            console.error(error); // a broken puzzle must not blank the lessons
+        }
     }
 
     // ---------- share ----------

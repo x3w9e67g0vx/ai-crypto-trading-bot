@@ -13,10 +13,10 @@ DOWN = Indicators(rsi=20.0, ema_fast=95.0, ema_slow=100.0, trend="down")
 CALM = Indicators(rsi=50.0, ema_fast=105.0, ema_slow=100.0, trend="up")
 
 
-def add_candles(db, *, rising=True, count=60, end_ms=NOW, symbol="BTC/USDT"):
+def add_candles(db, *, rising=True, count=60, end_ms=NOW, symbol="BTC/USDT", start=100.0):
     """`count` closed 5m candles, the last one closing at end_ms; mostly rising or falling."""
     first = end_ms - count * CANDLE_MS
-    close = 100.0
+    close = start
     for i in range(count):
         step = 1.0 if i % 5 else -0.5
         close += step if rising else -step

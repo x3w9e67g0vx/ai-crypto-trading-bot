@@ -57,7 +57,8 @@ def daily_puzzle(db: Session, now_ms: int) -> DailyPuzzle | None:
     start, end = day_start - PUZZLE_LOOKBACK_MS, day_start - PUZZLE_MIN_AGE_MS
     for _ in range(PUZZLE_TRIES):
         ts = start + rng.randrange((end - start) // CANDLE_MS) * CANDLE_MS
-        if not _has_candle(db, symbol, ts + (PUZZLE_AFTER_CANDLES - 1) * CANDLE_MS):
+        # Both ends must exist, or indicators_at may fall back to stale data.
+        if not (_has_candle(db, symbol, ts - CANDLE_MS) and _has_candle(db, symbol, ts + (PUZZLE_AFTER_CANDLES - 1) * CANDLE_MS)):
             continue
         indicators = indicators_at(db, symbol, ts)
         answer = setup_answer(indicators) if indicators is not None else None
@@ -135,7 +136,7 @@ def puzzle_result(db: Session, puzzle: DailyPuzzle, answer: PuzzleAnswer) -> dic
     """The reveal: the answer, the next hour of candles, the why and how others answered."""
     after = (
         _candles(db, puzzle)
-        .filter(Candle.timestamp >= puzzle.ts)
+        .filter(Candle.timestamp >= puzzle.ts, Candle.timestamp < puzzle.ts + PUZZLE_AFTER_CANDLES * CANDLE_MS)
         .order_by(Candle.timestamp)
         .limit(PUZZLE_AFTER_CANDLES)
         .all()
