@@ -258,6 +258,35 @@ class LessonProgress(Base):
     completed_at = Column(BigInteger, nullable=False)
 
 
+class DailyPuzzle(Base):
+    """One chart puzzle per UTC day: the answer is what the market did after it."""
+
+    __tablename__ = "daily_puzzles"
+
+    day = Column(String, primary_key=True)
+    symbol = Column(String, nullable=False)
+    ts = Column(BigInteger, nullable=False)
+    answer = Column(String, nullable=False)  # long | short | skip
+    rsi = Column(Float, nullable=False)
+    ema_fast = Column(Float, nullable=False)
+    ema_slow = Column(Float, nullable=False)
+    created_at = Column(BigInteger, nullable=False)
+
+
+class PuzzleAnswer(Base):
+    __tablename__ = "puzzle_answers"
+    __table_args__ = (
+        UniqueConstraint("player_id", "day", name="uq_puzzle_answer"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    player_id = Column(Integer, ForeignKey("players.id"), nullable=False, index=True)
+    day = Column(String, ForeignKey("daily_puzzles.day"), nullable=False)
+    choice = Column(String, nullable=False)
+    correct = Column(Boolean, nullable=False)
+    answered_at = Column(BigInteger, nullable=False)
+
+
 class ChannelPost(Base):
     """A post published to the channel; the unique (kind, key) stops repeats."""
 

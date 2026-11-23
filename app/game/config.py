@@ -102,3 +102,12 @@ CHANNEL_SLOTS = {"morning": 6 * HOUR_MS, "lesson": 10 * HOUR_MS, "evening": 18 *
 CHANNEL_SLOT_WINDOW_MS = 2 * HOUR_MS
 # Season results are posted only this long after the season ended.
 CHANNEL_RESULTS_WINDOW_MS = 2 * DAY_MS
+
+# Daily puzzle.
+XP_PER_PUZZLE = 30
+PUZZLE_MIN_EMA_GAP = 0.002
+PUZZLE_TRIES = 50
+PUZZLE_CHART_CANDLES = 60
+PUZZLE_AFTER_CANDLES = 12
+PUZZLE_LOOKBACK_MS = 29 * DAY_MS
+PUZZLE_MIN_AGE_MS = 2 * HOUR_MS
