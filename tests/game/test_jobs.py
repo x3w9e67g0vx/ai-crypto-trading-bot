@@ -1,10 +1,80 @@
-from app.game.config import SeasonKind
-from app.game.jobs import run_seasons, run_snapshots, run_stops
-from app.game.models import PortfolioSnapshot, Season
+from app.core.db.models import Indicator
+from app.game.ai_personas import Signal
+from app.game.candles import store_candle
+from app.game.config import CANDLE_TIMEFRAME_MS, SeasonKind
+from app.game.jobs import AiJob, run_seasons, run_snapshots, run_stops
+from app.game.models import AiDecision, PortfolioSnapshot, Season
+from app.game.price_feed import ClosedCandle
 from app.game.quotes import Quote
 from app.game.seasons import join_season
 from app.game.trading import open_position
 from tests.game.conftest import NOW, make_player, make_season
+
+# A candle that closed 30 s before NOW.
+FRESH = NOW - CANDLE_TIMEFRAME_MS - 30_000
+
+
+class FakeLoader:
+    def __init__(self, empty=False):
+        self.calls = []
+        self.empty = empty
+
+    def __call__(self, db, symbol, candle_ts):
+        self.calls.append((symbol, candle_ts))
+        if self.empty:
+            return {}
+        return {"lstm": Signal(candle_ts=candle_ts, probability_up=0.7, ema_fast=101.0, ema_slow=100.0)}
+
+
+def add_candle(db, ts, source="binance"):
+    store_candle(db, ClosedCandle("BTC/USDT", ts, 100.0, 101.0, 99.0, 100.0, 1.0), source=source)
+
+
+def test_ai_job_trades_fresh_candle(db, quotes):
+    add_candle(db, FRESH)
+    loader = FakeLoader()
+    assert AiJob(signals_loader=loader).run(db, quotes, NOW) == 1
+    assert loader.calls == [("BTC/USDT", FRESH)]
+    assert db.query(Indicator).count() == 1
+    assert db.query(AiDecision).filter_by(symbol="BTC/USDT", candle_ts=FRESH).count() == 1
+
+
+def test_ai_job_skips_old_candle(db, quotes):
+    add_candle(db, NOW - CANDLE_TIMEFRAME_MS - 3 * 60_000)
+    loader = FakeLoader()
+    assert AiJob(signals_loader=loader).run(db, quotes, NOW) == 0
+    assert loader.calls == []
+
+
+def test_ai_job_once_per_candle(db, quotes):
+    add_candle(db, FRESH)
+    loader = FakeLoader()
+    job = AiJob(signals_loader=loader)
+    job.run(db, quotes, NOW)
+    assert job.run(db, quotes, NOW + 10_000) == 0
+    assert len(loader.calls) == 1
+
+    # A restarted process sees the stored decision and does not trade again.
+    other = FakeLoader()
+    assert AiJob(signals_loader=other).run(db, quotes, NOW + 20_000) == 0
+    assert other.calls == []
+
+
+def test_ai_job_skips_bybit_candle(db, quotes):
+    add_candle(db, FRESH, source="bybit")
+    loader = FakeLoader()
+    assert AiJob(signals_loader=loader).run(db, quotes, NOW) == 0
+    assert loader.calls == []
+
+
+def test_ai_job_remembers_empty_signals(db, quotes):
+    add_candle(db, FRESH)
+    loader = FakeLoader(empty=True)
+    job = AiJob(signals_loader=loader)
+    assert job.run(db, quotes, NOW) == 0
+    assert job.run(db, quotes, NOW + 10_000) == 0
+    assert len(loader.calls) == 1
+    assert job.tried == {"BTC/USDT": FRESH}
 
 
 def test_seasons_job_rolls_over(db, quotes):

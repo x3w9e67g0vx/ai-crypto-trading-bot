@@ -72,16 +72,20 @@ class IndicatorService:
         inserted = 0
         skipped = 0
 
+        candle_ids = [int(candle_id) for candle_id in df["id"]]
+        existing: set[int] = set()
+        # Chunked so years of candles stay under the database's bind-parameter limit.
+        for start in range(0, len(candle_ids), 10_000):
+            chunk = candle_ids[start : start + 10_000]
+            existing.update(
+                candle_id
+                for (candle_id,) in self.db.query(Indicator.candle_id).filter(Indicator.candle_id.in_(chunk))
+            )
+
         for _, row in df.iterrows():
             candle_id = int(row["id"])
 
-            exists = (
-                self.db.query(Indicator)
-                .filter(Indicator.candle_id == candle_id)
-                .first()
-            )
-
-            if exists:
+            if candle_id in existing:
                 skipped += 1
                 continue
 

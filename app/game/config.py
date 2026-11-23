@@ -53,6 +53,8 @@ CANDLE_TIMEFRAME_MS = 5 * 60 * 1000
 BACKFILL_BATCH = 500
 BACKFILL_MAX_BATCHES = 100
 AI_MIN_ORDER_USDT = 10.0
+# The AI skips a candle that closed longer ago than this (e.g. right after a backfill).
+AI_MAX_LAG_MS = 2 * 60 * 1000
 # Free players see AI positions as they were this long ago.
 AI_VISIBILITY_DELAY_MS = 60 * 60 * 1000
 
