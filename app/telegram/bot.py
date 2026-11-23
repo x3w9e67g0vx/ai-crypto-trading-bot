@@ -13,6 +13,7 @@ import time
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.types import BotCommand, BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats
 
 from app.core.config import settings
@@ -84,7 +85,10 @@ async def main() -> None:
         raise SystemExit("TELEGRAM_BOT_TOKEN is not set")
     from app.core.db.session import SessionLocal
 
-    bot = Bot(token=settings.TELEGRAM_BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
+    # aiohttp ignores HTTPS_PROXY, so pass it explicitly when Telegram is reachable only through a proxy.
+    proxy = os.getenv("TELEGRAM_PROXY") or os.getenv("HTTPS_PROXY") or os.getenv("https_proxy")
+    session = AiohttpSession(proxy=proxy) if proxy else None
+    bot = Bot(token=settings.TELEGRAM_BOT_TOKEN, session=session, default=DefaultBotProperties(parse_mode="HTML"))
     quotes = QuoteBook()
     me = await bot.get_me()
     dp = build_dispatcher(
