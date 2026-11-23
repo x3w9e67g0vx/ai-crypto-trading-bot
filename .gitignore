@@ -9,3 +9,6 @@ __pycache__/
 # Local runner artifacts
 .run/
 run_logs/
+
+# Database backups
+backups/

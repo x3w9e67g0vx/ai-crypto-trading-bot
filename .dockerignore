@@ -1,0 +1,12 @@
+.git
+.venv
+.env
+.claude
+.serena
+.remember
+**/__pycache__
+*.pyc
+backups
+run_logs
+.run
+.pytest_cache

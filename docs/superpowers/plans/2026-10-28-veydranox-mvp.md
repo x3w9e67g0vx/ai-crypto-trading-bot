@@ -593,10 +593,10 @@
 
 ### Task 50: Docker, туннель, бэкапы
 **Files:** Create `Dockerfile`, `.dockerignore`, `scripts/backup.sh`, `.env.example`, `docs/deploy.md`; Modify `docker-compose.yml`, `.gitignore` (`backups/`); Test `tests/test_backup.py`
-- [ ] **Step 1: Тест** `test_backup_keeps_14_days` (RF7: фейковый `pg_dump` в `PATH`, в каталоге файлы возрастом 13 и 15 дней (`os.utime`) и чужой файл; после `BACKUP_ONCE=1 bash scripts/backup.sh` — новый `veydranox-<сегодня UTC>.dump` непустой, 13-дневный на месте, 15-дневный удалён, чужой не тронут).
-- [ ] **Step 2–3:** FAIL → `backup.sh`, `Dockerfile`, `docker-compose.yml`, `.env.example`, `docs/deploy.md` (запуск, туннель, восстановление, ручное переобучение).
-- [ ] **Step 4: Проверка** `pytest -q` зелёный; `docker compose config -q` и `COMPOSE_PROFILES=ngrok docker compose config --services` → `db migrate api bot worker scheduler backup ngrok`; `docker build .` (если сеть доступна).
-- [ ] **Step 5:** commit `feat(deploy): docker compose with worker, scheduler, tunnel and backups`.
+- [x] **Step 1: Тест** `test_backup_keeps_14_days` (RF7: фейковый `pg_dump` в `PATH`, в каталоге файлы возрастом 13 и 15 дней (`os.utime`) и чужой файл; после `BACKUP_ONCE=1 bash scripts/backup.sh` — новый `veydranox-<сегодня UTC>.dump` непустой, 13-дневный на месте, 15-дневный удалён, чужой не тронут).
+- [x] **Step 2–3:** FAIL → `backup.sh`, `Dockerfile`, `docker-compose.yml`, `.env.example`, `docs/deploy.md` (запуск, туннель, восстановление, ручное переобучение).
+- [x] **Step 4: Проверка** `pytest -q` зелёный; `docker compose config -q` и `COMPOSE_PROFILES=ngrok docker compose config --services` → `db migrate api bot worker scheduler backup ngrok`; `docker build .` (если сеть доступна).
+- [x] **Step 5:** commit `feat(deploy): docker compose with worker, scheduler, tunnel and backups`.
 
 ## Фазы 2–7 — дорожная карта (детальный план на каждую — перед стартом фазы)
 

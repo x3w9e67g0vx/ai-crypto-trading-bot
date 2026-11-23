@@ -28,7 +28,7 @@ mkdir -p "$LOGS"
 stop_all   # no duplicates from an earlier run
 
 echo "[db] starting Postgres..."
-docker compose up -d >/dev/null
+docker compose up -d db >/dev/null
 until docker exec trading_postgres pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null 2>&1; do sleep 1; done
 
 echo "[db] migrations..."

@@ -1,18 +1,95 @@
-version: "3.9"
+# VEYDRANOX: docker compose up -d --build   (see docs/deploy.md)
+x-app: &app
+  build: .
+  image: veydranox
+  restart: unless-stopped
+  env_file: .env
+  environment:
+    POSTGRES_HOST: db
+    POSTGRES_PORT: "5432"
+    MINIAPP_URL: ${PUBLIC_URL:+${PUBLIC_URL}/miniapp}
+  volumes:
+    - ./artifacts:/app/artifacts
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
 
 services:
   db:
     image: postgres:15
     container_name: trading_postgres
-    restart: always
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: trading_db
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-trading_db}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      retries: 20
+
+  migrate:
+    <<: *app
+    restart: "no"
+    command: alembic upgrade head
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    <<: *app
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+
+  bot:
+    <<: *app
+    command: python -m app.telegram.bot
+
+  worker:
+    <<: *app
+    command: python -m app.worker
+
+  scheduler:
+    <<: *app
+    command: python -m app.scheduler
+
+  backup:
+    image: postgres:15
+    restart: unless-stopped
+    entrypoint: ["bash", "/backup.sh"]
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER:-postgres}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      PGDATABASE: ${POSTGRES_DB:-trading_db}
+    volumes:
+      - ./scripts/backup.sh:/backup.sh:ro
+      - ./backups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+
+  ngrok:
+    profiles: [ngrok]
+    image: ngrok/ngrok:latest
+    restart: unless-stopped
+    command: ["http", "api:8000", "--url=${PUBLIC_URL}"]
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
+    depends_on: [api]
+
+  cloudflare:
+    profiles: [cloudflare]
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    depends_on: [api]
 
 volumes:
   postgres_data:
