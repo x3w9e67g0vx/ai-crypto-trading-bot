@@ -1,7 +1,6 @@
-"""VEYDRANOX bot: `python -m app.telegram.bot`.
+"""VEYDRANOX bot: `python -m app.telegram.bot` (polling only).
 
-The bot runs its own Binance feed (GAME_PRICE_FEED=0 turns it off) for /rank,
-notifications, channel posts (CHANNEL_ID) and admin season ends; a shared price worker comes in phase 7.
+Quotes come from Postgres (written by `app.worker`); notifications and channel posts run in `app.scheduler`.
 """
 
 from __future__ import annotations
@@ -18,12 +17,10 @@ from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.types import BotCommand, BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats
 
 from app.core.config import settings
-from app.game.price_feed import BinanceFeed
+from app.game.quote_store import run_quote_sync
 from app.game.quotes import QuoteBook
 from app.i18n.strings import t
 from app.telegram import admin, handlers
-from app.telegram.channel import run_channel
-from app.telegram.notifier import run_notifier
 
 logger = logging.getLogger(__name__)
 
@@ -80,16 +77,20 @@ async def set_commands(bot: Bot) -> None:
     await bot.set_my_description(t("disclaimer", lang="en"))
 
 
+def make_bot() -> Bot:
+    # aiohttp ignores HTTPS_PROXY, so pass it explicitly when Telegram is reachable only through a proxy.
+    proxy = os.getenv("TELEGRAM_PROXY") or os.getenv("HTTPS_PROXY") or os.getenv("https_proxy")
+    session = AiohttpSession(proxy=proxy) if proxy else None
+    return Bot(token=settings.TELEGRAM_BOT_TOKEN, session=session, default=DefaultBotProperties(parse_mode="HTML"))
+
+
 async def main() -> None:
     logging.basicConfig(level=logging.INFO)
     if not settings.TELEGRAM_BOT_TOKEN:
         raise SystemExit("TELEGRAM_BOT_TOKEN is not set")
     from app.core.db.session import SessionLocal
 
-    # aiohttp ignores HTTPS_PROXY, so pass it explicitly when Telegram is reachable only through a proxy.
-    proxy = os.getenv("TELEGRAM_PROXY") or os.getenv("HTTPS_PROXY") or os.getenv("https_proxy")
-    session = AiohttpSession(proxy=proxy) if proxy else None
-    bot = Bot(token=settings.TELEGRAM_BOT_TOKEN, session=session, default=DefaultBotProperties(parse_mode="HTML"))
+    bot = make_bot()
     quotes = QuoteBook()
     while True:  # Telegram flood control on startup: wait it out instead of crashing
         try:
@@ -108,21 +109,11 @@ async def main() -> None:
     )
     await set_commands(bot)
 
-    tasks = [asyncio.create_task(run_notifier(bot, SessionLocal, quotes))]
-    if settings.CHANNEL_ID:
-        channel_id = int(settings.CHANNEL_ID) if settings.CHANNEL_ID.lstrip("-").isdigit() else settings.CHANNEL_ID
-        tasks.append(asyncio.create_task(run_channel(bot, SessionLocal, quotes, channel_id, me.username or "")))
-    feed = None
-    if os.getenv("GAME_PRICE_FEED", "1").strip() != "0":
-        feed = BinanceFeed(quotes)
-        tasks.append(asyncio.create_task(feed.run()))
+    sync = asyncio.create_task(run_quote_sync(SessionLocal, quotes, publish=False))
     try:
         await dp.start_polling(bot)
     finally:
-        if feed is not None:
-            feed.stop()
-        for task in tasks:
-            task.cancel()
+        sync.cancel()
         await bot.session.close()
 
 

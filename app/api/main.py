@@ -14,25 +14,23 @@ from app.api.game_deps import game_error_handler, get_quotes
 from app.api.game_routes import router as game_router
 from app.core.db.dependencies import get_db
 from app.game.errors import GameError
-from app.game.price_feed import BinanceFeed
+from app.game.quote_store import run_quote_sync
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Schema comes from `alembic upgrade head`, not create_all.
-    feed = None
+    # Schema comes from `alembic upgrade head`, not create_all. Quotes come from Postgres (app.worker writes them).
     task = None
-    if os.getenv("GAME_PRICE_FEED", "1").strip() != "0":
-        feed = BinanceFeed(get_quotes())
-        task = asyncio.create_task(feed.run())
-        logger.info("Binance price feed started")
+    if os.getenv("QUOTE_SYNC", "1").strip() != "0":
+        from app.core.db.session import SessionLocal
+
+        task = asyncio.create_task(run_quote_sync(SessionLocal, get_quotes(), publish=False))
     try:
         yield
     finally:
-        if feed is not None:
-            feed.stop()
+        if task is not None:
             task.cancel()
 
 

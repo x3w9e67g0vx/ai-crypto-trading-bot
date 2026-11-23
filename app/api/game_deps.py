@@ -14,7 +14,7 @@ from app.game.players import get_or_create_player
 from app.game.quotes import QuoteBook
 from app.miniapp.dependencies import miniapp_auth
 
-# One book per API process, filled by the Binance feed started in the app lifespan.
+# One book per API process, copied from the Postgres quotes table in the app lifespan.
 _quotes = QuoteBook()
 
 

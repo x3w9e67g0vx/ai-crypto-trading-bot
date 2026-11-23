@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# VEYDRANOX local run: Postgres, migrations, seasons, price worker, API, bot, ngrok.
+# VEYDRANOX local run: Postgres, migrations, price worker, scheduler, API, bot, ngrok.
 #   ./scripts/start.sh        start everything; Ctrl+C stops it all
 #   ./scripts/start.sh stop   stop the app processes (Postgres keeps running)
 set -euo pipefail
@@ -11,6 +11,7 @@ PORT="${API_PORT:-8000}"
 
 stop_all() {
   pkill -f "python -m app.worker" 2>/dev/null || true
+  pkill -f "python -m app.scheduler" 2>/dev/null || true
   pkill -f "uvicorn app.api.main:app" 2>/dev/null || true
   pkill -f "python -m app.telegram.bot" 2>/dev/null || true
   pkill -f "ngrok http" 2>/dev/null || true
@@ -33,21 +34,12 @@ until docker exec trading_postgres pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_
 echo "[db] migrations..."
 .venv/bin/alembic upgrade head >/dev/null
 
-# Open the current seasons (the in-app scheduler will do this once it is finished).
-"$PY" - <<'EOF'
-import time
-from app.core.db.session import SessionLocal
-from app.game.jobs import run_seasons
-from app.game.quotes import QuoteBook
-with SessionLocal() as db:
-    run_seasons(db, QuoteBook(), int(time.time() * 1000))
-    db.commit()
-EOF
-
 PIDS=()
 trap 'echo; echo "Stopping..."; kill "${PIDS[@]}" 2>/dev/null; wait 2>/dev/null; exit 0' INT TERM
 
 "$PY" -m app.worker >"$LOGS/worker.log" 2>&1 & PIDS+=($!)
+# Seasons, SL/TP, snapshots, AI turns, notifications, channel posts.
+"$PY" -m app.scheduler >"$LOGS/scheduler.log" 2>&1 & PIDS+=($!)
 "$PY" -m uvicorn app.api.main:app --host 0.0.0.0 --port "$PORT" >"$LOGS/api.log" 2>&1 & PIDS+=($!)
 until curl -fs "localhost:$PORT/health/db" >/dev/null; do sleep 1; done
 echo "[api] http://localhost:$PORT/docs"

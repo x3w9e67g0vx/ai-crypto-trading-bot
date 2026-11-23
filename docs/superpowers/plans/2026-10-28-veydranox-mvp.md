@@ -583,8 +583,8 @@
 ### Task 48: Раскладка по процессам
 **Files:** Modify `app/scheduler.py` (`build_jobs`, `main`), `app/telegram/bot.py` (без фида, без уведомлений и канала; `run_quote_sync(publish=False)`), `app/telegram/notifier.py`, `app/telegram/channel.py` (удалить `run_notifier`, `run_channel` и интервалы — их место в планировщике), `app/api/main.py` (lifespan: `run_quote_sync(publish=False)` вместо `BinanceFeed`, отключается env `QUOTE_SYNC=0` для тестов), `app/api/game_deps.py` (комментарий); Test `tests/test_scheduler.py`, `tests/telegram/*` (ссылки на удалённые циклы)
 **Interfaces:** `build_jobs(session_factory, quotes, *, bot: Bot | None, channel_id: int | str | None, bot_username: str, ai_job: AiJob) -> list[Job]` — всегда `seasons`, `stops`, `snapshots`, `ai`; `notify` — при `bot`; `channel` — при `bot` и `channel_id`. `parse_channel_id(raw: str) -> int | str | None` (перенос из `bot.py`).
-- [ ] **Step 1: Тесты** `test_build_jobs_without_bot`, `test_build_jobs_with_channel` (имена и интервалы: 30/15/300/10/60/60), `test_parse_channel_id`.
-- [ ] **Step 2–5:** FAIL → реализовать → PASS (весь набор) → commit `feat(scheduler): move periodic work out of bot and api`.
+- [x] **Step 1: Тесты** `test_build_jobs_without_bot`, `test_build_jobs_with_channel` (имена и интервалы: 30/15/300/10/60/60), `test_parse_channel_id`.
+- [x] **Step 2–5:** FAIL → реализовать → PASS (весь набор) → commit `feat(scheduler): move periodic work out of bot and api`.
 
 ### Task 49: Удаление Airflow и старого ingestion
 **Files:** Delete `airflow/`, `scripts/run_all.sh`, `scripts/run_all.ps1`, `app/api/data_routes.py`, `app/services/ingestion_service.py`, `app/services/market_data_service.py`; Modify `app/api/main.py`, `tests/api/test_app.py`

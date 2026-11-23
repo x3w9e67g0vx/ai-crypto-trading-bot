@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import asyncio
 import logging
-import time
 
 from aiogram import Bot
 from aiogram.types import BufferedInputFile, LinkPreviewOptions
@@ -12,7 +10,6 @@ from app.game.quotes import QuoteBook
 
 logger = logging.getLogger(__name__)
 
-CHANNEL_INTERVAL_S = 60
 # Telegram limit for a photo caption.
 CAPTION_LIMIT = 1024
 NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
@@ -47,11 +44,3 @@ async def publish_once(
             logger.warning("channel post %s/%s failed", post.kind, post.key, exc_info=True)
     return published
 
-
-async def run_channel(bot: Bot, session_factory, quotes: QuoteBook, channel_id: int | str, bot_username: str) -> None:
-    while True:
-        try:
-            await publish_once(bot, session_factory, quotes, channel_id, bot_username, int(time.time() * 1000))
-        except Exception:
-            logger.exception("channel pass failed")
-        await asyncio.sleep(CHANNEL_INTERVAL_S)

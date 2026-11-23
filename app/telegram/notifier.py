@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import asyncio
 import logging
-import time
 
 from aiogram import Bot
 
@@ -12,7 +10,6 @@ from app.i18n.strings import t
 
 logger = logging.getLogger(__name__)
 
-NOTIFY_INTERVAL_S = 60
 
 
 def render(item: Outgoing) -> str:
@@ -43,11 +40,3 @@ async def notify_once(bot: Bot, session_factory, quotes: QuoteBook, now_ms: int)
             logger.warning("notification to %s failed", chat_id, exc_info=True)
     return delivered
 
-
-async def run_notifier(bot: Bot, session_factory, quotes: QuoteBook) -> None:
-    while True:
-        try:
-            await notify_once(bot, session_factory, quotes, int(time.time() * 1000))
-        except Exception:
-            logger.exception("notifier pass failed")
-        await asyncio.sleep(NOTIFY_INTERVAL_S)

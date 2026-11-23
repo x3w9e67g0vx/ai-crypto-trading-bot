@@ -2,8 +2,10 @@ import asyncio
 
 import pytest
 
+from app.game.jobs import AiJob
 from app.game.models import Player
-from app.scheduler import Job, Scheduler, db_job
+from app.game.quotes import QuoteBook
+from app.scheduler import Job, Scheduler, build_jobs, db_job, parse_channel_id
 from tests.api.conftest import session_factory  # noqa: F401  shared fixture
 
 
@@ -50,3 +52,29 @@ def test_db_job_commits_and_rolls_back(session_factory):
         asyncio.run(db_job(session_factory, add_and_fail)())
     with session_factory() as db:
         assert [p.nickname for p in db.query(Player).all()] == ["kept"]
+
+
+def intervals(jobs):
+    return [(job.name, job.interval_s) for job in jobs]
+
+
+def test_build_jobs_without_bot(session_factory):
+    jobs = build_jobs(session_factory, QuoteBook(), bot=None, channel_id=-100, bot_username="", ai_job=AiJob())
+    assert intervals(jobs) == [("seasons", 30), ("stops", 15), ("snapshots", 300), ("ai", 10)]
+
+
+def test_build_jobs_with_channel(session_factory):
+    bot = object()
+    assert [name for name, _ in intervals(
+        build_jobs(session_factory, QuoteBook(), bot=bot, channel_id=None, bot_username="b", ai_job=AiJob())
+    )] == ["seasons", "stops", "snapshots", "ai", "notify"]
+    jobs = build_jobs(session_factory, QuoteBook(), bot=bot, channel_id=-100, bot_username="b", ai_job=AiJob())
+    assert intervals(jobs) == [
+        ("seasons", 30), ("stops", 15), ("snapshots", 300), ("ai", 10), ("notify", 60), ("channel", 60),
+    ]
+
+
+def test_parse_channel_id():
+    assert parse_channel_id("") is None
+    assert parse_channel_id("-1001234") == -1001234
+    assert parse_channel_id("@veydranox") == "@veydranox"
