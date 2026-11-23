@@ -58,6 +58,11 @@ def run_ai_turn(
             probability_up=signal.probability_up,
             view=stance,
             created_at=now_ms,
+            buy_threshold=persona.buy_threshold,
+            sell_threshold=persona.sell_threshold,
+            trend_filter=persona.use_trend_filter,
+            ema_fast=signal.ema_fast,
+            ema_slow=signal.ema_slow,
         )
         db.add(decision)
         decisions.append(decision)

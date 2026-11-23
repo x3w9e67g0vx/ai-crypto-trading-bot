@@ -7,6 +7,7 @@ import pandas as pd
 from sqlalchemy.orm import Session
 
 from app.core.db.models import Candle
+from app.game.ai_personas import PERSONAS
 from app.game.ai_view import is_pro
 from app.game.analytics import log_event
 from app.game.config import (
@@ -18,7 +19,7 @@ from app.game.config import (
     INSIGHT_MIN_CANDLES,
     MAX_TIPS_PER_ORDER,
 )
-from app.game.models import AiDecision, Player, Position
+from app.game.models import AiDecision, Player, Portfolio, Position
 from app.services.indicator_service import IndicatorService
 
 CANDLE_MS = 5 * 60 * 1000  # CHART_TIMEFRAME
@@ -158,4 +159,85 @@ def trade_review(db: Session, viewer: Player, position: Position, now_ms: int) -
         "exit": asdict(exit_) if exit_ is not None else None,
         "ai": ai,
         "notes": _notes(position, entry, ai),
+    }
+
+
+# Step of an AI entry -> lesson that explains it.
+WHY_LESSONS = {
+    "signal": "10",
+    "trend": "06",
+    "no_trend_filter": "06",
+    "rsi_overbought": "07",
+    "rsi_oversold": "07",
+    "rsi_neutral": "07",
+    "size": "03",
+    "stops": "04",
+}
+
+
+def ai_entry_why(db: Session, viewer: Player, position_id: int, now_ms: int) -> dict | None:
+    """Why an AI opened a position, step by step as it decided; None if it is not
+    an AI position or the viewer may not see it yet (same delay as the AI profile)."""
+    row = (
+        db.query(Position, Player)
+        .join(Portfolio, Position.portfolio_id == Portfolio.id)
+        .join(Player, Portfolio.player_id == Player.id)
+        .filter(Position.id == position_id, Player.is_ai.is_(True))
+        .one_or_none()
+    )
+    if row is None:
+        return None
+    position, ai = row
+    if not is_pro(viewer, now_ms) and position.opened_at > now_ms - AI_VISIBILITY_DELAY_MS:
+        return None
+
+    persona = next(p for p in PERSONAS if p.key == ai.ai_key)
+    # The AI opens in the same turn it decides, so the decision shares the timestamp.
+    decision = (
+        db.query(AiDecision)
+        .filter_by(player_id=ai.id, symbol=position.symbol, created_at=position.opened_at)
+        .one_or_none()
+    )
+    long = position.side == "long"
+    snapshot = decision is not None and decision.buy_threshold is not None
+    if long:
+        threshold = decision.buy_threshold if snapshot else persona.buy_threshold
+    else:
+        threshold = decision.sell_threshold if snapshot else persona.sell_threshold
+    trend_filter = decision.trend_filter if snapshot else persona.use_trend_filter
+    entry = indicators_at(db, position.symbol, position.opened_at)
+    if decision is not None and decision.ema_fast is not None and decision.ema_slow is not None:
+        trend = "up" if decision.ema_fast > decision.ema_slow else "down"
+    else:
+        trend = entry.trend if entry is not None else None
+    rsi = entry.rsi if entry is not None else None
+
+    steps = ["signal"] if decision is not None else []
+    steps.append("trend" if trend_filter else "no_trend_filter")
+    if rsi is not None:
+        steps.append("rsi_overbought" if rsi > 70 else "rsi_oversold" if rsi < 30 else "rsi_neutral")
+    steps += ["size", "stops"]
+
+    def pct_from_entry(price: float | None) -> float | None:
+        return None if price is None else (price / position.entry_price - 1) * 100
+
+    return {
+        "position_id": position.id,
+        "nickname": ai.nickname,
+        "persona": persona.key,
+        "symbol": position.symbol,
+        "side": position.side,
+        "opened_at": position.opened_at,
+        "entry_price": position.entry_price,
+        "amount_usdt": position.reserved,
+        "stop_loss": position.stop_loss,
+        "take_profit": position.take_profit,
+        "stop_pct": pct_from_entry(position.stop_loss),
+        "take_pct": pct_from_entry(position.take_profit),
+        "probability_up": decision.probability_up if decision is not None else None,
+        "threshold": threshold,
+        "trend_filter": trend_filter,
+        "trend": trend,
+        "rsi": rsi,
+        "steps": [{"code": code, "lesson_id": WHY_LESSONS[code]} for code in steps],
     }

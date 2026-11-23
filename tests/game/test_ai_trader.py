@@ -105,6 +105,13 @@ def test_ai_not_in_league_groups(db, quotes):
     assert db.query(LeagueMembership).count() == 0
 
 
+def test_decision_keeps_what_the_persona_decided_on(db, quotes):
+    [decision] = turn(db, quotes, {"random_forest": BULLISH})
+
+    assert (decision.buy_threshold, decision.sell_threshold, decision.trend_filter) == (0.65, 0.35, True)
+    assert (decision.ema_fast, decision.ema_slow) == (101.0, 100.0)
+
+
 def test_unknown_symbol_rejected(db, quotes):
     with pytest.raises(UnknownSymbol):
         run_ai_turn(db, "BNB/USDT", CANDLE, {}, quotes, NOW)

@@ -86,3 +86,21 @@ def test_ai_endpoint_delays_for_free(client, db):
     assert pro["delayed"] is False
     assert [position["symbol"] for position in pro["positions"]] == ["BTC/USDT"]
     assert len(pro["decisions"]) == 2
+
+
+def test_ai_position_why_is_delayed_for_free(client, db):
+    lstm, portfolio = _join_ai(db)
+    position = Position(portfolio_id=portfolio.id, symbol="BTC/USDT", side="long", qty=1, entry_price=100, reserved=100, opened_at=NOW - 20 * MINUTE)
+    db.add(position)
+    db.add(AiDecision(player_id=lstm.id, symbol="BTC/USDT", candle_ts=NOW - 25 * MINUTE, probability_up=0.7, view="bullish", created_at=NOW - 20 * MINUTE))
+    db.commit()
+    url = f"/game/ai/positions/{position.id}/why"
+
+    assert client.get(url, headers=auth()).status_code == 404
+
+    db.query(Player).filter_by(telegram_id=ALICE["id"]).update({"is_pro_until": NOW + MINUTE})
+    db.commit()
+    pro = next(row for row in client.get("/game/ai", params={"season": "week"}, headers=auth()).json() if row["key"] == "lstm")
+    assert pro["positions"][0]["id"] == position.id
+    body = client.get(url, headers=auth()).json()
+    assert (body["nickname"], body["probability_up"], body["threshold"]) == ("LSTM", 0.7, 0.55)

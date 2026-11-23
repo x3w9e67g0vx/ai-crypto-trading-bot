@@ -187,6 +187,12 @@ class AiDecision(Base):
     probability_up = Column(Float, nullable=False)
     view = Column(String, nullable=False)  # bullish | bearish | neutral
     created_at = Column(BigInteger, nullable=False)
+    # What the persona decided on, kept because thresholds get tuned; null on rows before 0008.
+    buy_threshold = Column(Float, nullable=True)
+    sell_threshold = Column(Float, nullable=True)
+    trend_filter = Column(Boolean, nullable=True)
+    ema_fast = Column(Float, nullable=True)
+    ema_slow = Column(Float, nullable=True)
 
 
 class Notification(Base):

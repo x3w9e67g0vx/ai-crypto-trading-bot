@@ -28,7 +28,7 @@ from app.game.config import (
     SeasonKind,
 )
 from app.game.errors import LessonNotFound, PositionExists, PositionNotFound, SymbolLocked, UnknownSymbol
-from app.game.insights import indicators_at, order_tips, trade_review
+from app.game.insights import ai_entry_why, indicators_at, order_tips, trade_review
 from app.game.leaderboard import standings
 from app.game.leagues import group_portfolio_ids
 from app.game.lessons import Lesson, get_lesson, get_lessons
@@ -392,6 +392,7 @@ def get_ai_players(
                 "delayed": not is_pro(player, now_ms),
                 "positions": [
                     {
+                        "id": position.id,
                         "symbol": position.symbol,
                         "side": position.side,
                         "entry_price": position.entry_price,
@@ -414,6 +415,20 @@ def get_ai_players(
             }
         )
     return result
+
+
+@router.get("/ai/positions/{position_id}/why")
+def get_ai_position_why(
+    position_id: int,
+    player: Player = Depends(current_player),
+    db: Session = Depends(get_db),
+    now_ms: int = Depends(get_now_ms),
+) -> dict:
+    """Why an AI opened this position; 404 until the viewer may see it."""
+    why = ai_entry_why(db, player, position_id, now_ms)
+    if why is None:
+        raise PositionNotFound(position_id)
+    return why
 
 
 def _lesson_or_404(player: Player, lesson_id: str) -> Lesson:

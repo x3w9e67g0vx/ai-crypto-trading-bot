@@ -437,6 +437,51 @@
         );
     }
 
+    function whyStep(why, code) {
+        const pctOrDash = (value) => (value == null ? "—" : pct(value));
+        const vars = {
+            nickname: why.nickname,
+            prob: why.probability_up == null ? "—" : Math.round(why.probability_up * 100),
+            threshold: Math.round(why.threshold * 100),
+            trend: why.trend ? t(`review.trend.${why.trend}`) : t("review.no_data"),
+            rsi: why.rsi == null ? "—" : Math.round(why.rsi),
+            amount: `${money(why.amount_usdt)} USDT`,
+            price: price(why.entry_price),
+            stop: price(why.stop_loss),
+            stop_pct: pctOrDash(why.stop_pct),
+            take: price(why.take_profit),
+            take_pct: pctOrDash(why.take_pct),
+        };
+        return t(code === "signal" ? `why.signal.${why.side}` : `why.${code}`, vars);
+    }
+
+    async function whyModal(positionId) {
+        let why;
+        try {
+            why = await api(`/game/ai/positions/${positionId}/why`);
+        } catch (error) {
+            toast(errorText(error));
+            return;
+        }
+        const steps = why.steps
+            .map((step) => `<li><div class="grow">${esc(whyStep(why, step.code))}</div>
+                <button class="small-btn" data-lesson="${esc(step.lesson_id)}">${esc(t("why.lesson"))}</button></li>`)
+            .join("");
+        const lessonId = await modal(
+            `<h2>${esc(t("why.title", { nickname: why.nickname, side: t(`side.${why.side}`), symbol: why.symbol }))}</h2>
+             <ol class="list">${steps}</ol>
+             <button class="primary" id="why-close">${esc(t("review.close"))}</button>`,
+            (dialog, done) => {
+                dialog.addEventListener("cancel", () => done(), { once: true });
+                $("#why-close", dialog).onclick = () => done();
+                dialog.querySelectorAll("[data-lesson]").forEach((button) => {
+                    button.onclick = () => done(button.dataset.lesson);
+                });
+            },
+        );
+        if (lessonId) openLesson(lessonId);
+    }
+
     async function refreshTrade() {
         const [rows, closed] = await Promise.all([
             api(`/game/positions?season=${state.season}`),
@@ -613,7 +658,8 @@
                           .map(
                               (p) => `<li><div class="grow"><strong>${esc(p.symbol)}</strong>
                                 <span class="side-tag ${p.side === "long" ? "up" : "down"}">${esc(t(`side.${p.side}`))}</span></div>
-                                <span class="hint">${esc(t("positions.entry", { price: price(p.entry_price) }))}</span></li>`,
+                                <span class="hint">${esc(t("positions.entry", { price: price(p.entry_price) }))}</span>
+                                <button class="small-btn" data-why="${p.id}">${esc(t("ai.why"))}</button></li>`,
                           )
                           .join("")
                     : `<li class="hint">${esc(t("ai.no_positions"))}</li>`;
@@ -637,6 +683,9 @@
         screen.innerHTML = `${seasonSwitch()}
             ${delayed ? `<p class="hint">${esc(t("ai.delayed"))}</p>` : ""}
             ${blocks || `<p class="empty">${esc(t("duel.no_ai"))}</p>`}`;
+        screen.querySelectorAll("[data-why]").forEach((button) => {
+            button.onclick = () => whyModal(button.dataset.why);
+        });
         bindSeasonSwitch();
     }
 

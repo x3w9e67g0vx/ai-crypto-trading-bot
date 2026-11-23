@@ -57,6 +57,16 @@ def test_i18n_covers_tips_and_notes():
     assert "learn.soon" not in strings["ru"]
 
 
+def test_i18n_covers_ai_why_steps():
+    from app.game.insights import WHY_LESSONS
+
+    strings = _strings()
+    keys = {"ai.why", "why.title", "why.signal.long", "why.signal.short"}
+    keys |= {f"why.{code}" for code in WHY_LESSONS if code != "signal"}
+    for lang in ("ru", "en"):
+        assert keys <= set(strings[lang]), (lang, keys - set(strings[lang]))
+
+
 def test_i18n_covers_share():
     strings = _strings()
     keys = {f"share.{name}" for name in ("title", "button", "hint", "send", "story", "close")}
