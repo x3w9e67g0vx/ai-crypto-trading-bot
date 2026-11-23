@@ -43,7 +43,7 @@ def test_no_candles_no_puzzle(db):
 @pytest.fixture
 def candles(db):
     for i, symbol in enumerate(STARTER_SYMBOLS):
-        # Falling series drops ~5200 over 8640 candles: start high so it stays positive.
+        # Falling series drops ~6000 over 8640 candles: start high so it stays positive in the puzzle window.
         add_candles(db, rising=i % 2 == 0, count=30 * 288, end_ms=NOW, symbol=symbol, start=100.0 if i % 2 == 0 else 6000.0)
 
 

@@ -58,7 +58,8 @@ def daily_puzzle(db: Session, now_ms: int) -> DailyPuzzle | None:
     for _ in range(PUZZLE_TRIES):
         ts = start + rng.randrange((end - start) // CANDLE_MS) * CANDLE_MS
         # Both ends must exist, or indicators_at may fall back to stale data.
-        if not (_has_candle(db, symbol, ts - CANDLE_MS) and _has_candle(db, symbol, ts + (PUZZLE_AFTER_CANDLES - 1) * CANDLE_MS)):
+        last_after = ts + (PUZZLE_AFTER_CANDLES - 1) * CANDLE_MS
+        if not (_has_candle(db, symbol, ts - CANDLE_MS) and _has_candle(db, symbol, last_after)):
             continue
         indicators = indicators_at(db, symbol, ts)
         answer = setup_answer(indicators) if indicators is not None else None
