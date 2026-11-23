@@ -27,14 +27,22 @@ from app.game.config import (
     XP_PER_LESSON,
     SeasonKind,
 )
-from app.game.errors import LessonNotFound, PositionExists, PositionNotFound, SymbolLocked, UnknownSymbol
+from app.game.errors import (
+    LessonNotFound,
+    PositionExists,
+    PositionNotFound,
+    PuzzleNotFound,
+    SymbolLocked,
+    UnknownSymbol,
+)
 from app.game.insights import ai_entry_why, indicators_at, order_tips, trade_review
 from app.game.leaderboard import standings
 from app.game.leagues import group_portfolio_ids
 from app.game.lessons import Lesson, get_lesson, get_lessons
-from app.game.models import Badge, Player, Portfolio, Position
+from app.game.models import Badge, Player, Portfolio, Position, PuzzleAnswer
 from app.game.players import unlocked_symbols, validate_nickname
 from app.game.progress import complete_lesson, completed_lessons, level_info
+from app.game.puzzle import answer_puzzle, daily_puzzle, puzzle_chart, puzzle_result
 from app.game.quotes import QuoteBook
 from app.game.referrals import ref_link
 from app.game.seasons import current_portfolio, ensure_current_season
@@ -476,6 +484,45 @@ def pass_lesson(
     xp_awarded = complete_lesson(db, player, lesson, body.answer, now_ms)
     db.commit()
     return {"xp_awarded": xp_awarded, "player": _player_json(db, player, now_ms)}
+
+
+@router.get("/puzzle")
+def get_puzzle(
+    player: Player = Depends(current_player),
+    db: Session = Depends(get_db),
+    now_ms: int = Depends(get_now_ms),
+) -> dict | None:
+    puzzle = daily_puzzle(db, now_ms)
+    db.commit()
+    if puzzle is None:
+        return None
+    answer = db.query(PuzzleAnswer).filter_by(player_id=player.id, day=puzzle.day).one_or_none()
+    return {
+        "day": puzzle.day,
+        "symbol": puzzle.symbol,
+        "rsi": puzzle.rsi,
+        **puzzle_chart(db, puzzle),
+        "answered": puzzle_result(db, puzzle, answer) if answer is not None else None,
+    }
+
+
+class PuzzleChoice(BaseModel):
+    choice: Literal["long", "short", "skip"]
+
+
+@router.post("/puzzle/answer")
+def post_puzzle_answer(
+    body: PuzzleChoice,
+    player: Player = Depends(current_player),
+    db: Session = Depends(get_db),
+    now_ms: int = Depends(get_now_ms),
+) -> dict:
+    puzzle = daily_puzzle(db, now_ms)
+    if puzzle is None:
+        raise PuzzleNotFound(now_ms)
+    answer = answer_puzzle(db, player, puzzle, body.choice, now_ms)
+    db.commit()
+    return {"result": puzzle_result(db, puzzle, answer), "player": _player_json(db, player, now_ms)}
 
 
 class ShareRequest(BaseModel):
