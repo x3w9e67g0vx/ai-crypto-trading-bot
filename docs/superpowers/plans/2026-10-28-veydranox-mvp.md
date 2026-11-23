@@ -588,8 +588,8 @@
 
 ### Task 49: Удаление Airflow и старого ingestion
 **Files:** Delete `airflow/`, `scripts/run_all.sh`, `scripts/run_all.ps1`, `app/api/data_routes.py`, `app/services/ingestion_service.py`, `app/services/market_data_service.py`; Modify `app/api/main.py`, `tests/api/test_app.py`
-- [ ] **Step 1: Тест** `test_data_routes_removed` вместо `test_data_routes_kept` (`/ingest/update-multiple`, `/indicators/calculate-multiple` → 404).
-- [ ] **Step 2–5:** FAIL → удалить → PASS, `grep -ri airflow app tests scripts` пусто → commit `chore: remove airflow and legacy ingestion`.
+- [x] **Step 1: Тест** `test_data_routes_removed` вместо `test_data_routes_kept` (`/ingest/update-multiple`, `/indicators/calculate-multiple` → 404).
+- [x] **Step 2–5:** FAIL → удалить → PASS, `grep -ri airflow app tests scripts` пусто → commit `chore: remove airflow and legacy ingestion`.
 
 ### Task 50: Docker, туннель, бэкапы
 **Files:** Create `Dockerfile`, `.dockerignore`, `scripts/backup.sh`, `.env.example`, `docs/deploy.md`; Modify `docker-compose.yml`, `.gitignore` (`backups/`); Test `tests/test_backup.py`

@@ -1,4 +1,3 @@
-from app.api.main import app
 from tests.api.conftest import auth
 
 
@@ -7,9 +6,9 @@ def test_old_endpoints_removed(client):
         assert client.get(path, headers=auth()).status_code == 404, path
 
 
-def test_data_routes_kept():
-    paths = {route.path for route in app.routes}
-    assert {"/ingest/update-multiple", "/indicators/calculate-multiple"} <= paths
+def test_data_routes_removed(client):
+    assert client.post("/ingest/update-multiple", headers=auth()).status_code == 404
+    assert client.post("/indicators/calculate-multiple", headers=auth()).status_code == 404
 
 
 def test_miniapp_served(client):

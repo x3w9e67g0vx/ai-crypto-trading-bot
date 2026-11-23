@@ -1,4 +1,4 @@
-"""In-app scheduler: `python -m app.scheduler` (replaces Airflow).
+"""In-app scheduler: `python -m app.scheduler`.
 
 One loop ticks every second and runs each job once its interval has passed.
 A failing job is logged and tried again at its next interval; the others keep running.

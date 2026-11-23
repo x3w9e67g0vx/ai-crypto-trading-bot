@@ -9,7 +9,6 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.api.data_routes import router as data_router
 from app.api.game_deps import game_error_handler, get_quotes
 from app.api.game_routes import router as game_router
 from app.core.db.dependencies import get_db
@@ -37,7 +36,6 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="VEYDRANOX", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.include_router(game_router)
-app.include_router(data_router)
 app.add_exception_handler(GameError, game_error_handler)
 
 
