@@ -72,3 +72,11 @@ def test_i18n_covers_share():
     keys = {f"share.{name}" for name in ("title", "button", "hint", "send", "story", "close")}
     for lang in ("ru", "en"):
         assert keys <= set(strings[lang]), (lang, keys - set(strings[lang]))
+
+
+def test_i18n_covers_puzzle():
+    strings = _strings()
+    names = ("title", "long", "short", "skip", "correct", "wrong", "outcome", "against", "community", "step.trend")
+    keys = {f"puzzle.{name}" for name in names} | {f"puzzle.setup.{answer}" for answer in ("long", "short", "skip")}
+    for lang in ("ru", "en"):
+        assert keys <= set(strings[lang]), (lang, keys - set(strings[lang]))

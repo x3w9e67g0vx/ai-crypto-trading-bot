@@ -502,6 +502,8 @@
         return { text: css.getPropertyValue("--hint").trim(), line: css.getPropertyValue("--line").trim() };
     }
 
+    const CANDLE_STYLE = { upColor: "#1f9d6b", downColor: "#d9475b", borderVisible: false, wickUpColor: "#1f9d6b", wickDownColor: "#d9475b" };
+
     async function loadChart() {
         if (!window.LightweightCharts) return;
         const colors = chartColors();
@@ -514,13 +516,7 @@
             timeScale: { borderVisible: false, timeVisible: true },
             handleScale: false,
         });
-        state.series = state.chart.addCandlestickSeries({
-            upColor: "#1f9d6b",
-            downColor: "#d9475b",
-            borderVisible: false,
-            wickUpColor: "#1f9d6b",
-            wickDownColor: "#d9475b",
-        });
+        state.series = state.chart.addCandlestickSeries(CANDLE_STYLE);
         const candles = await api(`/game/candles?symbol=${encodeURIComponent(state.symbol)}`);
         state.series.setData(candles);
         state.lastBar = candles.length ? candles[candles.length - 1] : null;
@@ -770,6 +766,95 @@
         window.scrollTo(0, 0);
     }
 
+    // ---------- daily puzzle ----------
+
+    // Own chart instance: state.chart belongs to the trade screen.
+    let puzzleChart = null;
+
+    function drawPuzzleChart(el, puzzle) {
+        if (puzzleChart) puzzleChart.remove();
+        puzzleChart = null;
+        if (!window.LightweightCharts || !puzzle.candles.length) return;
+        const colors = chartColors();
+        puzzleChart = LightweightCharts.createChart(el, {
+            height: el.clientHeight,
+            layout: { background: { color: "transparent" }, textColor: colors.text },
+            grid: { vertLines: { visible: false }, horzLines: { color: colors.line } },
+            rightPriceScale: { borderVisible: false },
+            // The date stays hidden: the puzzle is about the setup, not the moment.
+            timeScale: { visible: false },
+            handleScale: false,
+            handleScroll: false,
+        });
+        const series = puzzleChart.addCandlestickSeries(CANDLE_STYLE);
+        const after = puzzle.answered ? puzzle.answered.after : [];
+        series.setData([...puzzle.candles, ...after]);
+        if (after.length) {
+            const last = puzzle.candles[puzzle.candles.length - 1];
+            series.setMarkers([{ time: last.time, position: "aboveBar", color: colors.text, shape: "arrowDown" }]);
+        }
+        const line = { lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false };
+        puzzleChart.addLineSeries({ ...line, color: "#e0a030" }).setData(puzzle.ema_fast);
+        puzzleChart.addLineSeries({ ...line, color: "#5b8def" }).setData(puzzle.ema_slow);
+        puzzleChart.timeScale().fitContent();
+    }
+
+    function puzzleResult(result) {
+        const vars = { trend: t(`review.trend.${result.trend}`), rsi: Math.round(result.rsi) };
+        const verdict = t(result.correct ? "puzzle.correct" : "puzzle.wrong", { setup: t(`puzzle.setup.${result.answer}`, vars) });
+        const outcome = result.outcome_pct;
+        // The setup's call against what happened next; a skip has nothing to be against.
+        const against = outcome != null && ((result.answer === "long" && outcome < 0) || (result.answer === "short" && outcome > 0));
+        const steps = result.steps
+            .map((step) => `<li><div class="grow">${esc(t(step.code === "trend" ? "puzzle.step.trend" : `why.${step.code}`, vars))}</div>
+                <button class="small-btn" data-puzzle-lesson="${esc(step.lesson_id)}">${esc(t("why.lesson"))}</button></li>`)
+            .join("");
+        return {
+            head: `<p class="${result.correct ? "up" : "down"}">${esc(verdict)} <span class="hint">(${result.xp ? `+${result.xp}` : 0} XP)</span></p>`,
+            tail: `${outcome != null ? `<p>${esc(t("puzzle.outcome", { pct: pct(outcome) }))}</p>` : ""}
+              ${against ? `<p class="hint">${esc(t("puzzle.against"))}</p>` : ""}
+              <ol class="list">${steps}</ol>
+              <p class="hint">${esc(t("puzzle.community", { same: result.same_pct, correct: result.correct_pct }))}</p>`,
+        };
+    }
+
+    function puzzleCard(puzzle) {
+        const choices = ["long", "short", "skip"]
+            .map((choice) => `<button data-choice="${choice}">${esc(t(`puzzle.${choice}`))}</button>`)
+            .join("");
+        const result = puzzle.answered
+            ? puzzleResult(puzzle.answered)
+            : { head: "", tail: `<div class="tip-actions puzzle-actions">${choices}</div>` };
+        return `<section class="level-card puzzle-card">
+            <h3><span>${esc(t("puzzle.title"))}</span><span class="hint">${esc(puzzle.symbol)} · 5m · RSI ${Math.round(puzzle.rsi)}</span></h3>
+            ${result.head}
+            <div id="puzzle-chart"></div>
+            ${result.tail}
+        </section>`;
+    }
+
+    function bindPuzzle(puzzle) {
+        drawPuzzleChart($("#puzzle-chart"), puzzle);
+        const buttons = screen.querySelectorAll("[data-choice]");
+        buttons.forEach((button) => {
+            button.onclick = async () => {
+                buttons.forEach((b) => (b.disabled = true));
+                try {
+                    const { result } = await api("/game/puzzle/answer", { method: "POST", body: { choice: button.dataset.choice } });
+                    haptic(result.correct ? "success" : "warning");
+                } catch (error) {
+                    haptic("error");
+                    toast(errorText(error));
+                }
+                // Re-render: the card comes back answered and the level card picks up the XP.
+                go("learn");
+            };
+        });
+        screen.querySelectorAll("[data-puzzle-lesson]").forEach((button) => {
+            button.onclick = () => openLesson(button.dataset.puzzleLesson);
+        });
+    }
+
     async function learnScreen() {
         if (state.lesson) {
             const lessonId = state.lesson;
@@ -777,7 +862,8 @@
             await lessonScreen(lessonId);
             return;
         }
-        const [lessons] = await Promise.all([api("/game/lessons"), refreshMe()]);
+        // A broken puzzle must not take the lessons down with it.
+        const [lessons, puzzle] = await Promise.all([api("/game/lessons"), api("/game/puzzle").catch(() => null), refreshMe()]);
         const rows = lessons
             .map(
                 (lesson) => `<li>
@@ -787,12 +873,13 @@
                 </li>`,
             )
             .join("");
-        screen.innerHTML = `${levelCard(state.me.player)}
+        screen.innerHTML = `${puzzle ? puzzleCard(puzzle) : ""}${levelCard(state.me.player)}
             <p class="hint">${esc(t("learn.how", { xp: lessons.length ? lessons[0].xp : 0, trade_xp: XP_PER_TRADE }))}</p>
             <ul class="list">${rows}</ul>`;
         screen.querySelectorAll("[data-lesson]").forEach((button) => {
             button.onclick = () => lessonScreen(button.dataset.lesson);
         });
+        if (puzzle) bindPuzzle(puzzle);
     }
 
     // ---------- share ----------
