@@ -117,7 +117,7 @@ for _ in range(PUZZLE_TRIES):
     `xp = XP_PER_PUZZLE if correct else 0`; `trend = "up" if ema_fast > ema_slow else "down"`;
     `same_pct`, `correct_pct` — целые проценты по всем ответам дня.
   - `GET /game/puzzle` → `null` или `{"day", "symbol", "rsi", **puzzle_chart, "answered": None | puzzle_result}`.
-  - `POST /game/puzzle/answer` body `PuzzleChoice(BaseModel): choice: Literal["long", "short", "skip"]` → `{"result": puzzle_result, "player": _player_json(...)}`; нет задачки → 404 через `HTTPException(detail=error_detail("puzzle_not_found"))`; `db.commit()` как в `/lessons/.../complete`.
+  - `POST /game/puzzle/answer` body `PuzzleChoice(BaseModel): choice: Literal["long", "short", "skip"]` → `{"result": puzzle_result, "player": _player_json(...)}`; нет задачки → `PuzzleNotFound(GameError)` (`code = "puzzle_not_found"`, добавить в Task 1 в `errors.py` и в 404-ветку `_status_for` в `app/api/game_deps.py`); `db.commit()` как в `/lessons/.../complete`.
 
 - [ ] **Step 1: Тесты** — в `tests/game/test_puzzle.py`:
   - `test_answer_correct_awards_xp` — верный выбор → `correct is True`, `player.xp == XP_PER_PUZZLE`.
