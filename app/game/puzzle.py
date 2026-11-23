@@ -28,6 +28,8 @@ from app.game.models import DailyPuzzle, Player, PuzzleAnswer
 from app.game.progress import award_xp
 from app.services.indicator_service import IndicatorService
 
+PUZZLE_ANSWERS = ("long", "short", "skip")
+
 
 def setup_answer(indicators: Indicators) -> str | None:
     """The right call for a setup; None when the trend is too weak or RSI is undefined."""
@@ -53,30 +55,39 @@ def daily_puzzle(db: Session, now_ms: int) -> DailyPuzzle | None:
     # Seeded by the day so every request on the same day tries the same moments.
     rng = random.Random(day)
     symbol = rng.choice(STARTER_SYMBOLS)
+    # A per-day target answer keeps long/short/skip about equally common; skip dominates real data.
+    target = rng.choice(PUZZLE_ANSWERS)
     day_start = now_ms - now_ms % DAY_MS
     start, end = day_start - PUZZLE_LOOKBACK_MS, day_start - PUZZLE_MIN_AGE_MS
+    fallback = None
     for _ in range(PUZZLE_TRIES):
         ts = start + rng.randrange((end - start) // CANDLE_MS) * CANDLE_MS
-        # Both ends must exist, or indicators_at may fall back to stale data.
         last_after = ts + (PUZZLE_AFTER_CANDLES - 1) * CANDLE_MS
         if not (_has_candle(db, symbol, ts - CANDLE_MS) and _has_candle(db, symbol, last_after)):
             continue
         indicators = indicators_at(db, symbol, ts)
         answer = setup_answer(indicators) if indicators is not None else None
-        if answer is None:
-            continue
-        puzzle = DailyPuzzle(
-            day=day, symbol=symbol, ts=ts, answer=answer, rsi=indicators.rsi,
-            ema_fast=indicators.ema_fast, ema_slow=indicators.ema_slow, created_at=now_ms,
-        )
-        try:
-            # Savepoint: a parallel request may have picked today's puzzle first.
-            with db.begin_nested():
-                db.add(puzzle)
-        except IntegrityError:
-            return db.get(DailyPuzzle, day)
-        return puzzle
-    return None
+        if answer == target:
+            found = (ts, answer, indicators)
+            break
+        if answer is not None and fallback is None:
+            fallback = (ts, answer, indicators)
+    else:
+        found = fallback
+    if found is None:
+        return None
+    ts, answer, indicators = found
+    puzzle = DailyPuzzle(
+        day=day, symbol=symbol, ts=ts, answer=answer, rsi=indicators.rsi,
+        ema_fast=indicators.ema_fast, ema_slow=indicators.ema_slow, created_at=now_ms,
+    )
+    try:
+        # Savepoint: a parallel request may have picked today's puzzle first.
+        with db.begin_nested():
+            db.add(puzzle)
+    except IntegrityError:
+        return db.get(DailyPuzzle, day)
+    return puzzle
 
 
 def puzzle_steps(puzzle: DailyPuzzle) -> list[dict]:

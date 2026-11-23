@@ -168,3 +168,22 @@ def test_community_pcts(db):
     assert result["same_pct"] == 67
     assert result["correct_pct"] == 67
     assert result["outcome_pct"] is None  # no candles
+
+
+def _skewed(indicators):
+    """Fake setup rule: mostly skip, like real data where skip dominates."""
+    bucket = hash(indicators.ema_fast) % 10  # float hash is deterministic and well spread
+    return {0: "long", 1: "short"}.get(bucket, "skip")
+
+
+def test_daily_puzzle_balances_answers(db, candles, monkeypatch):
+    monkeypatch.setattr("app.game.puzzle.setup_answer", _skewed)
+    answers = [daily_puzzle(db, NOW - day * 24 * HOUR_MS).answer for day in range(30)]
+    # Unbalanced, ~80% would be skip; with a per-day target each answer gets about a third.
+    for answer in ("long", "short", "skip"):
+        assert 5 <= answers.count(answer) <= 15, answers
+
+
+def test_daily_puzzle_falls_back_to_any_answer(db, candles, monkeypatch):
+    monkeypatch.setattr("app.game.puzzle.setup_answer", lambda indicators: "skip")
+    assert all(daily_puzzle(db, NOW - day * 24 * HOUR_MS).answer == "skip" for day in range(6))
