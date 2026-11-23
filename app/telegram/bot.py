@@ -13,6 +13,7 @@ import time
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
+from aiogram.exceptions import TelegramRetryAfter
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.types import BotCommand, BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats
 
@@ -90,7 +91,13 @@ async def main() -> None:
     session = AiohttpSession(proxy=proxy) if proxy else None
     bot = Bot(token=settings.TELEGRAM_BOT_TOKEN, session=session, default=DefaultBotProperties(parse_mode="HTML"))
     quotes = QuoteBook()
-    me = await bot.get_me()
+    while True:  # Telegram flood control on startup: wait it out instead of crashing
+        try:
+            me = await bot.get_me()
+            break
+        except TelegramRetryAfter as e:
+            logging.warning("getMe flood control, retry in %ss", e.retry_after)
+            await asyncio.sleep(e.retry_after + 1)
     dp = build_dispatcher(
         session_factory=SessionLocal,
         quotes=quotes,
