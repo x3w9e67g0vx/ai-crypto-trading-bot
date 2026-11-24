@@ -551,7 +551,8 @@ dialog h2 {
 }
 
 /* Daily puzzle */
-#puzzle-chart {
+#puzzle-chart,
+#replay-chart {
     height: 180px;
     margin: 8px -14px;
 }

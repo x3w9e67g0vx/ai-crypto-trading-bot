@@ -894,10 +894,8 @@
 
     // ---------- daily puzzle ----------
 
-    function puzzleChart(view) {
-        stopTimers();
-        const el = $("#puzzle-chart");
-        if (!window.LightweightCharts || !el) return;
+    function historyChart(el) {
+        if (!window.LightweightCharts || !el) return null;
         const colors = chartColors();
         state.chart = LightweightCharts.createChart(el, {
             height: el.clientHeight,
@@ -909,13 +907,19 @@
             handleScale: false,
             handleScroll: false,
         });
-        const series = state.chart.addCandlestickSeries({
+        return state.chart.addCandlestickSeries({
             upColor: "#1f9d6b",
             downColor: "#d9475b",
             borderVisible: false,
             wickUpColor: "#1f9d6b",
             wickDownColor: "#d9475b",
         });
+    }
+
+    function puzzleChart(view) {
+        stopTimers();
+        const series = historyChart($("#puzzle-chart"));
+        if (!series) return;
         const after = view.result ? view.result.after : [];
         series.setData(view.candles.concat(after));
         const cut = view.candles[view.candles.length - 1];
@@ -1078,13 +1082,114 @@
             )
             .join("");
         screen.innerHTML = `<div id="streak">${streakLine()}</div><section class="level-card" id="puzzle"></section>
+            <section class="level-card"><h3><span>${esc(t("replay.title"))}</span><button class="small-btn" id="replay-open">${esc(t("replay.open"))}</button></h3>
+              <p class="hint">${esc(t("replay.about"))}</p></section>
             ${levelCard(state.me.player)}
             <p class="hint">${esc(t("learn.how", { xp: lessons.length ? lessons[0].xp : 0, trade_xp: XP_PER_TRADE }))}</p>
             <ul class="list">${rows}</ul>`;
         screen.querySelectorAll("[data-lesson]").forEach((button) => {
             button.onclick = () => lessonScreen(button.dataset.lesson);
         });
+        $("#replay-open").onclick = () => replayScreen();
         renderPuzzle(puzzle.puzzle);
+    }
+
+    // ---------- replay trainer ----------
+
+    const REPLAY_TICK_MS = 1600;
+    const REPLAY_START = 10000;
+
+    async function replayScreen() {
+        const { replay } = await api("/game/replay");
+        if (!replay) {
+            toast(t("replay.none"));
+            return;
+        }
+        screen.innerHTML = `<button class="small-btn" id="replay-back">${esc(t("learn.back"))}</button>
+            <section class="level-card">
+              <h3><span>${esc(t("replay.title"))}</span><span class="hint">${esc(t("learn.reward", { xp: replay.xp }))}</span></h3>
+              <p class="hint">${esc(t("replay.ask"))}</p>
+              <div id="replay-chart"></div>
+              <p id="replay-stats"></p>
+              <div class="quiz-options puzzle-choices" id="replay-actions">
+                ${["long", "short", "close"].map((code) => `<button data-act="${code}">${esc(t(`replay.${code}`))}</button>`).join("")}
+              </div>
+              <div id="replay-result"></div>
+            </section>`;
+        $("#replay-back").onclick = () => go("learn");
+        stopTimers();
+        const candles = replay.candles;
+        const series = historyChart($("#replay-chart"));
+        if (series) series.setData(candles.slice(0, replay.show));
+        let idx = replay.show;
+        let cash = REPLAY_START;
+        let pos = null;
+        const markers = [];
+        const last = () => candles[idx - 1];
+        const equity = () => (pos ? cash + pos.qty * (pos.side === "long" ? 1 : -1) * (last().close - pos.entry) : cash);
+        const stats = () => {
+            const side = pos ? t(`replay.${pos.side}`) : t("replay.flat");
+            $("#replay-stats").textContent = t("replay.stats", {
+                equity: money(equity()),
+                change: pct((equity() / REPLAY_START - 1) * 100),
+                side,
+                left: candles.length - idx,
+            });
+            $('[data-act="close"]').disabled = !pos;
+        };
+        const mark = (text, color) => {
+            markers.push({ time: last().time, position: "aboveBar", shape: "circle", color, text });
+            if (series) series.setMarkers(markers);
+        };
+        const close = () => {
+            if (!pos) return;
+            cash = equity();
+            pos = null;
+            mark("×", "#9b6bff");
+        };
+        screen.querySelectorAll("[data-act]").forEach((button) => {
+            button.onclick = () => {
+                const act = button.dataset.act;
+                if (act === "close" || (pos && pos.side !== act)) close();
+                if (act !== "close" && !pos) {
+                    pos = { side: act, entry: last().close, qty: cash / last().close };
+                    mark(act === "long" ? "L" : "S", act === "long" ? "#1f9d6b" : "#d9475b");
+                }
+                stats();
+            };
+        });
+        const finish = async () => {
+            // Keep the chart on screen: stop only the tick, not stopTimers().
+            state.timers.forEach(clearInterval);
+            state.timers = [];
+            close();
+            $("#replay-actions").hidden = true;
+            const mine = (cash / REPLAY_START - 1) * 100;
+            const hold = (last().close / candles[replay.show - 1].close - 1) * 100;
+            let xp = 0;
+            try {
+                const result = await api("/game/replay/finish", { method: "POST" });
+                xp = result.xp_awarded;
+                state.me.player = result.player;
+            } catch (error) {
+                toast(errorText(error));
+            }
+            if (xp) toast(t("replay.toast", { xp }));
+            if (!$("#replay-result")) return; // the player left the screen meanwhile
+            haptic("success");
+            $("#replay-result").innerHTML = `<p><strong>${esc(t("replay.done", { symbol: replay.symbol.replace("/USDT", ""), mine: pct(mine), hold: pct(hold) }))}</strong></p>
+                <p class="hint">${esc(t(mine >= hold ? "replay.beat" : "replay.lost"))}</p>
+                <button class="small-btn" id="replay-again">${esc(t("replay.again"))}</button>`;
+            $("#replay-again").onclick = () => replayScreen();
+        };
+        stats();
+        every(REPLAY_TICK_MS, () => {
+            if (idx >= candles.length) return finish();
+            if (series) series.update(candles[idx]);
+            idx += 1;
+            stats();
+        });
+        window.scrollTo(0, 0);
     }
 
     // ---------- share ----------

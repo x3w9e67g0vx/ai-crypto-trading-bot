@@ -38,6 +38,7 @@ from app.game.models import Badge, Player, Portfolio, Position
 from app.game.players import unlocked_symbols, validate_nickname
 from app.game.guesses import guess_view, make_guess
 from app.game.puzzle import answer_puzzle, puzzle_view
+from app.game.replay import finish_replay, replay_view
 from app.game.quests import claim_quests
 from app.game.progress import complete_lesson, completed_lessons, level_info
 from app.game.quotes import QuoteBook
@@ -529,6 +530,26 @@ def post_puzzle(
     xp_awarded = answer_puzzle(db, player, body.choice, now_ms)
     db.commit()
     return {"xp_awarded": xp_awarded, "puzzle": puzzle_view(db, player, now_ms), "player": _player_json(db, player, now_ms)}
+
+
+@router.get("/replay")
+def get_replay(
+    player: Player = Depends(current_player),
+    db: Session = Depends(get_db),
+    now_ms: int = Depends(get_now_ms),
+) -> dict:
+    return {"replay": replay_view(db, now_ms)}
+
+
+@router.post("/replay/finish")
+def post_replay_finish(
+    player: Player = Depends(current_player),
+    db: Session = Depends(get_db),
+    now_ms: int = Depends(get_now_ms),
+) -> dict:
+    xp_awarded = finish_replay(db, player, now_ms)
+    db.commit()
+    return {"xp_awarded": xp_awarded, "player": _player_json(db, player, now_ms)}
 
 
 @router.get("/guess")

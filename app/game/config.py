@@ -112,6 +112,12 @@ PUZZLE_MIN_AGE_MS = 2 * DAY_MS
 PUZZLE_MOVE_PCT = 0.5
 PUZZLE_FLAT_PCT = 0.2
 XP_PER_PUZZLE = 20
+# Replay trainer: a past week as 1h candles (12 x 5m each), the first REPLAY_SHOW shown up front.
+REPLAY_CANDLES = 168
+REPLAY_GROUP = 12
+REPLAY_SHOW = 24
+REPLAY_LOOKBACK_MS = 30 * DAY_MS
+XP_PER_REPLAY = 15
 
 # "Guess the AI": a bet on the next candle; XP per correct half, capped per UTC day.
 XP_PER_GUESS_HIT = 5
@@ -135,7 +141,7 @@ XP_PER_DUEL_DRAW = 15
 DUEL_DRAW_EPS = 0.01
 
 # Day streak: a day counts when the player trades, passes a lesson or answers the daily puzzle.
-STREAK_KINDS = ("trade", "lesson_done", "puzzle_done")
+STREAK_KINDS = ("trade", "lesson_done", "puzzle_done", "replay_done")
 # (days in a row, XP), granted once per streak run.
 STREAK_MILESTONES = ((3, 20), (7, 50), (30, 150))
 # Reminder for a streak of at least this many days not yet extended today, from this UTC hour.
