@@ -102,3 +102,13 @@ CHANNEL_SLOTS = {"morning": 6 * HOUR_MS, "lesson": 10 * HOUR_MS, "evening": 18 *
 CHANNEL_SLOT_WINDOW_MS = 2 * HOUR_MS
 # Season results are posted only this long after the season ended.
 CHANNEL_RESULTS_WINDOW_MS = 2 * DAY_MS
+
+# Daily chart puzzle: candles shown, candles revealed after the answer, where to look for a window.
+PUZZLE_SHOW = 60
+PUZZLE_HORIZON = 12
+PUZZLE_LOOKBACK_MS = 30 * DAY_MS
+PUZZLE_MIN_AGE_MS = 2 * DAY_MS
+# A move at least this big is a long/short answer, a smaller one than PUZZLE_FLAT_PCT is "skip".
+PUZZLE_MOVE_PCT = 0.5
+PUZZLE_FLAT_PCT = 0.2
+XP_PER_PUZZLE = 20

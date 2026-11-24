@@ -283,3 +283,31 @@ class StoredQuote(Base):
     ask = Column(Float, nullable=False)
     # When the worker received the quote; consumers judge staleness by it.
     ts = Column(BigInteger, nullable=False)
+
+
+class DailyPuzzle(Base):
+    """The chart puzzle of a UTC day, the same for every player."""
+
+    __tablename__ = "daily_puzzles"
+
+    day = Column(String, primary_key=True)  # YYYY-MM-DD
+    symbol = Column(String, nullable=False)
+    # Open time of the last candle shown before the answer.
+    cut_ts = Column(BigInteger, nullable=False)
+    answer = Column(String, nullable=False)  # long | short | skip
+    move_pct = Column(Float, nullable=False)
+    created_at = Column(BigInteger, nullable=False)
+
+
+class PuzzleAnswer(Base):
+    __tablename__ = "puzzle_answers"
+    __table_args__ = (
+        UniqueConstraint("player_id", "day", name="uq_puzzle_answer"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    player_id = Column(Integer, ForeignKey("players.id"), nullable=False, index=True)
+    day = Column(String, ForeignKey("daily_puzzles.day"), nullable=False)
+    choice = Column(String, nullable=False)
+    correct = Column(Boolean, nullable=False)
+    created_at = Column(BigInteger, nullable=False)

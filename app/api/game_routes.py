@@ -34,6 +34,7 @@ from app.game.leagues import group_portfolio_ids
 from app.game.lessons import Lesson, get_lesson, get_lessons
 from app.game.models import Badge, Player, Portfolio, Position
 from app.game.players import unlocked_symbols, validate_nickname
+from app.game.puzzle import answer_puzzle, puzzle_view
 from app.game.progress import complete_lesson, completed_lessons, level_info
 from app.game.quotes import QuoteBook
 from app.game.referrals import ref_link
@@ -476,6 +477,33 @@ def pass_lesson(
     xp_awarded = complete_lesson(db, player, lesson, body.answer, now_ms)
     db.commit()
     return {"xp_awarded": xp_awarded, "player": _player_json(db, player, now_ms)}
+
+
+@router.get("/puzzle")
+def get_puzzle(
+    player: Player = Depends(current_player),
+    db: Session = Depends(get_db),
+    now_ms: int = Depends(get_now_ms),
+) -> dict:
+    view = puzzle_view(db, player, now_ms)
+    db.commit()
+    return {"puzzle": view}
+
+
+class PuzzleAnswerRequest(BaseModel):
+    choice: Literal["long", "short", "skip"]
+
+
+@router.post("/puzzle")
+def post_puzzle(
+    body: PuzzleAnswerRequest,
+    player: Player = Depends(current_player),
+    db: Session = Depends(get_db),
+    now_ms: int = Depends(get_now_ms),
+) -> dict:
+    xp_awarded = answer_puzzle(db, player, body.choice, now_ms)
+    db.commit()
+    return {"xp_awarded": xp_awarded, "puzzle": puzzle_view(db, player, now_ms), "player": _player_json(db, player, now_ms)}
 
 
 class ShareRequest(BaseModel):

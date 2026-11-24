@@ -689,6 +689,93 @@
         bindSeasonSwitch();
     }
 
+    // ---------- daily puzzle ----------
+
+    function puzzleChart(view) {
+        stopTimers();
+        const el = $("#puzzle-chart");
+        if (!window.LightweightCharts || !el) return;
+        const colors = chartColors();
+        state.chart = LightweightCharts.createChart(el, {
+            height: el.clientHeight,
+            layout: { background: { color: "transparent" }, textColor: colors.text },
+            grid: { vertLines: { visible: false }, horzLines: { color: colors.line } },
+            rightPriceScale: { borderVisible: false },
+            // Times are fake on purpose: the window must not be found by date.
+            timeScale: { visible: false },
+            handleScale: false,
+            handleScroll: false,
+        });
+        const series = state.chart.addCandlestickSeries({
+            upColor: "#1f9d6b",
+            downColor: "#d9475b",
+            borderVisible: false,
+            wickUpColor: "#1f9d6b",
+            wickDownColor: "#d9475b",
+        });
+        const after = view.result ? view.result.after : [];
+        series.setData(view.candles.concat(after));
+        const cut = view.candles[view.candles.length - 1];
+        if (cut) series.setMarkers([{ time: cut.time, position: "aboveBar", shape: "arrowDown", color: "#9b6bff", text: view.result ? "" : "?" }]);
+        state.chart.timeScale().fitContent();
+    }
+
+    function puzzleResult(result) {
+        const choice = (code) => t(`puzzle.${code}`);
+        const verdict = result.correct
+            ? t("puzzle.right", { answer: choice(result.answer) })
+            : t("puzzle.wrong", { choice: choice(result.choice), answer: choice(result.answer) });
+        const why = [t(`puzzle.trend_${result.trend || "none"}`)];
+        if (result.rsi != null) {
+            const zone = result.rsi >= 70 ? "high" : result.rsi <= 30 ? "low" : "mid";
+            why.push(t(`puzzle.rsi_${zone}`, { rsi: Math.round(result.rsi) }));
+        }
+        return `<p><strong class="${result.correct ? "up" : "down"}">${esc(verdict)}</strong></p>
+            <p>${esc(t("puzzle.moved", { symbol: result.symbol.replace("/USDT", ""), move: pct(result.move_pct) }))}</p>
+            <p class="hint">${esc(why.join(" "))} ${esc(t("puzzle.note"))}</p>
+            <button class="small-btn" id="puzzle-lesson">${esc(t("puzzle.lesson"))}</button>`;
+    }
+
+    function renderPuzzle(view) {
+        const box = $("#puzzle");
+        if (!box) return;
+        if (!view) {
+            box.remove();
+            return;
+        }
+        const body = view.result
+            ? puzzleResult(view.result)
+            : `<div class="quiz-options puzzle-choices">
+                ${["long", "short", "skip"].map((code) => `<button data-choice="${code}">${esc(t(`puzzle.${code}`))}</button>`).join("")}
+              </div>
+              <p class="form-error" id="puzzle-error"></p>`;
+        box.innerHTML = `<h3><span>${esc(t("puzzle.title"))}</span><span class="hint">${esc(t("learn.reward", { xp: view.xp }))}</span></h3>
+            <p class="hint">${esc(t("puzzle.ask"))}</p>
+            <div id="puzzle-chart"></div>
+            ${body}`;
+        puzzleChart(view);
+        if (view.result) {
+            $("#puzzle-lesson").onclick = () => lessonScreen(view.result.lesson_id);
+            return;
+        }
+        box.querySelectorAll("[data-choice]").forEach((button) => {
+            button.onclick = async () => {
+                box.querySelectorAll("[data-choice]").forEach((b) => (b.disabled = true));
+                try {
+                    const result = await api("/game/puzzle", { method: "POST", body: { choice: button.dataset.choice } });
+                    haptic(result.xp_awarded ? "success" : "error");
+                    if (result.xp_awarded) toast(t("puzzle.toast", { xp: result.xp_awarded }));
+                    state.me.player = result.player;
+                    renderPuzzle(result.puzzle);
+                } catch (error) {
+                    haptic("error");
+                    box.querySelectorAll("[data-choice]").forEach((b) => (b.disabled = false));
+                    $("#puzzle-error").textContent = errorText(error);
+                }
+            };
+        });
+    }
+
     // ---------- lessons ----------
 
     // Mirrors XP_PER_TRADE in app/game/config.py.
@@ -777,7 +864,7 @@
             await lessonScreen(lessonId);
             return;
         }
-        const [lessons] = await Promise.all([api("/game/lessons"), refreshMe()]);
+        const [lessons, puzzle] = await Promise.all([api("/game/lessons"), api("/game/puzzle"), refreshMe()]);
         const rows = lessons
             .map(
                 (lesson) => `<li>
@@ -787,12 +874,14 @@
                 </li>`,
             )
             .join("");
-        screen.innerHTML = `${levelCard(state.me.player)}
+        screen.innerHTML = `<section class="level-card" id="puzzle"></section>
+            ${levelCard(state.me.player)}
             <p class="hint">${esc(t("learn.how", { xp: lessons.length ? lessons[0].xp : 0, trade_xp: XP_PER_TRADE }))}</p>
             <ul class="list">${rows}</ul>`;
         screen.querySelectorAll("[data-lesson]").forEach((button) => {
             button.onclick = () => lessonScreen(button.dataset.lesson);
         });
+        renderPuzzle(puzzle.puzzle);
     }
 
     // ---------- share ----------

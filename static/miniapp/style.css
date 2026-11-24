@@ -537,3 +537,17 @@ dialog h2 {
 .tip-actions button:last-child:nth-child(odd) {
     grid-column: 1 / -1;
 }
+
+/* Daily puzzle */
+#puzzle-chart {
+    height: 180px;
+    margin: 8px -14px;
+}
+
+.puzzle-choices {
+    grid-template-columns: repeat(3, 1fr);
+}
+
+.puzzle-choices button {
+    text-align: center;
+}

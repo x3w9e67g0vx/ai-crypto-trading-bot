@@ -62,3 +62,7 @@ class LessonNotFound(GameError):
 
 class WrongAnswer(GameError):
     code = "wrong_answer"
+
+
+class PuzzleNotFound(GameError):
+    code = "puzzle_not_found"
