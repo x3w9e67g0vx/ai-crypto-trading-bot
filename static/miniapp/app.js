@@ -218,9 +218,17 @@
         state.timers.push(setInterval(fn, ms));
     }
 
+    // The friend duel lives only on the trade and ranking screens, and only while it runs.
+    const DUEL_TABS = ["trade", "rank"];
+
+    function hasDuel() {
+        return Boolean(state.me && state.me.portfolios.duel);
+    }
+
     async function go(tab) {
         stopTimers();
         state.tab = tab;
+        if (state.season === "duel" && (!DUEL_TABS.includes(tab) || !hasDuel())) state.season = "sprint";
         document.querySelectorAll("#tabs button").forEach((button) => {
             if (button.dataset.tab === tab) button.setAttribute("aria-current", "page");
             else button.removeAttribute("aria-current");
@@ -234,7 +242,7 @@
 
     function seasonSwitch() {
         return `<div class="segmented" role="group">
-            ${["sprint", "week"]
+            ${["sprint", "week", ...(hasDuel() && DUEL_TABS.includes(state.tab) ? ["duel"] : [])]
                 .map((kind) => `<button data-season="${kind}" aria-pressed="${state.season === kind}">${esc(t(`season.${kind}`))}</button>`)
                 .join("")}
         </div>`;
@@ -257,6 +265,8 @@
 
     async function refreshMe() {
         state.me = await api("/game/me");
+        // The duel just ended: back to the sprint screen.
+        if (state.season === "duel" && !hasDuel()) setTimeout(() => go(state.tab));
     }
 
     function renderSeasonMeta() {
@@ -270,20 +280,24 @@
     }
 
     function renderDuel(ai) {
-        const mine = portfolio().return_pct;
         const best = ai.reduce((top, row) => (top == null || row.return_pct > top.return_pct ? row : top), null);
-        const theirs = best ? best.return_pct : 0;
+        renderVersus(portfolio().return_pct, best ? best.return_pct : null,
+            best ? t("duel.best_ai", { name: best.nickname }) : t("duel.no_ai"));
+    }
+
+    function renderVersus(mine, rival, rivalLabel) {
+        const theirs = rival ?? 0;
         // Half the bar each at a tie; every percentage point of lead tilts it by 10%.
         const share = Math.max(4, Math.min(96, 50 + (mine - theirs) * 10));
         $("#duel").innerHTML = `
             <div class="duel-scores">
               <span class="num ${trend(mine)}">${pct(mine)}</span>
-              <span class="num ai-score">${best ? pct(theirs) : "—"}</span>
+              <span class="num ai-score">${rival != null ? pct(theirs) : "—"}</span>
             </div>
             <div class="duel-bar"><span style="width:${share}%"></span></div>
             <div class="duel-labels hint">
               <span>${esc(t("duel.you"))}</span>
-              <span>${esc(best ? t("duel.best_ai", { name: best.nickname }) : t("duel.no_ai"))}</span>
+              <span>${esc(rivalLabel)}</span>
             </div>`;
     }
 
@@ -486,12 +500,12 @@
         const [rows, closed, quests] = await Promise.all([
             api(`/game/positions?season=${state.season}`),
             api(`/game/positions?season=${state.season}&status=closed`),
-            api(`/game/quests?season=${state.season}`),
+            state.season === "duel" ? null : api(`/game/quests?season=${state.season}`),
             refreshMe(),
         ]);
         renderPositions(rows);
         renderHistory(closed);
-        renderQuests(quests);
+        if (quests) renderQuests(quests);
         renderSeasonMeta();
     }
 
@@ -521,7 +535,64 @@
     }
 
     async function refreshDuel() {
-        renderDuel(await api(`/game/ai?season=${state.season}`));
+        const inDuel = state.season === "duel";
+        const [ai, friend] = await Promise.all([inDuel ? null : api(`/game/ai?season=${state.season}`), api("/game/duel")]);
+        if (inDuel && friend.state === "active") renderVersus(friend.my_pct, friend.rival_pct, friend.rival);
+        else if (ai) renderDuel(ai);
+        renderFriendDuel(inDuel ? { state: "hidden" } : friend);
+    }
+
+    function sendDuelInvite(body) {
+        if (!body.link) return toast(t("errors.game_error"));
+        tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(body.link)}&text=${encodeURIComponent(body.text)}`);
+    }
+
+    async function duelAction(method) {
+        try {
+            const body = await api("/game/duel", { method });
+            if (method === "POST") sendDuelInvite(body);
+            renderFriendDuel(body);
+        } catch (error) {
+            toast(errorText(error));
+        }
+    }
+
+    function renderFriendDuel(d) {
+        const box = $("#friend-duel");
+        if (!box) return;
+        box.hidden = d.state === "hidden";
+        const score = d.score && d.score[0] + d.score[1] > 0 ? ` · ${t("fduel.score", { score: d.score.join(":") })}` : "";
+        const title = `<h3><span>${esc(t("fduel.title"))}</span></h3>`;
+        if (d.state === "open") {
+            box.innerHTML = `${title}<p>${esc(t("fduel.waiting", { time: duration(d.expires_at - Date.now()) }))}</p>
+                <div class="tip-actions"><button class="primary" data-duel="POST">${esc(t("fduel.resend"))}</button>
+                <button data-duel="DELETE">${esc(t("fduel.cancel"))}</button></div>`;
+        } else if (d.state === "active") {
+            box.innerHTML = `${title}<p>${esc(t("fduel.running", { rival: d.rival }))}
+                <span class="num ${trend(d.my_pct)}">${pct(d.my_pct)}</span> / <span class="num ${trend(d.rival_pct)}">${pct(d.rival_pct)}</span>
+                <span class="hint">· ${esc(t("season.ends_in", { time: duration(d.ends_at - Date.now()) }))}${esc(score)}</span></p>
+                <button class="primary" data-duel-open>${esc(t("fduel.open"))}</button>`;
+        } else if (d.state === "finished") {
+            const xp = d.xp ? ` · +${d.xp} XP` : "";
+            box.innerHTML = `${title}<p>${esc(t(`fduel.${d.outcome}`, { rival: d.rival }))}
+                <span class="num ${trend(d.my_pct)}">${pct(d.my_pct)}</span> / <span class="num ${trend(d.rival_pct)}">${pct(d.rival_pct)}</span>
+                <span class="hint">${esc(score + xp)}</span></p>
+                <button class="primary" data-duel="POST">${esc(t("fduel.rematch"))}</button>`;
+        } else {
+            box.innerHTML = `${title}<p class="hint">${esc(t("fduel.pitch"))}</p>
+                <button class="primary" data-duel="POST">${esc(t("fduel.challenge"))}</button>`;
+        }
+        box.querySelectorAll("[data-duel]").forEach((button) => {
+            button.onclick = () => duelAction(button.dataset.duel);
+        });
+        const open = box.querySelector("[data-duel-open]");
+        if (open) {
+            open.onclick = async () => {
+                await refreshMe();
+                state.season = "duel";
+                go("trade");
+            };
+        }
     }
 
     function chartColors() {
@@ -595,6 +666,7 @@
             ${seasonSwitch()}
             <div class="season-meta" id="season-meta"></div>
             <section class="duel" id="duel" aria-live="polite"></section>
+            <section class="level-card" id="friend-duel" aria-live="polite"></section>
             <p id="balance"></p>
             <div class="pairs" role="group">
               ${symbols.map((symbol) => `<button data-symbol="${esc(symbol)}" aria-pressed="${symbol === state.symbol}">${esc(symbol.replace("/USDT", ""))}</button>`).join("")}
@@ -622,7 +694,7 @@
                 <button class="short" id="sell-short"></button>
               </div>
             </section>
-            <section class="level-card" id="quests"></section>
+            <section class="level-card" id="quests" ${state.season === "duel" ? "hidden" : ""}></section>
             <h2>${esc(t("positions.open"))}</h2>
             <ul class="list" id="positions"></ul>
             <h2>${esc(t("positions.history"))}</h2>

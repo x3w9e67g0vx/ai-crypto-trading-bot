@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.game.config import DAY_MS, STARTING_BALANCE, WEEK_MS, SeasonKind
+from app.game.config import DAY_MS, DUEL_KIND, STARTING_BALANCE, WEEK_MS, SeasonKind
 from app.game.errors import SeasonClosed
 from app.game.models import Player, Portfolio, Position, Season
 from app.game.quotes import QuoteBook
@@ -125,9 +125,13 @@ def finalize_season(db: Session, season: Season, quotes: QuoteBook, now_ms: int)
 
 
 def _settle(db: Session, season: Season, quotes: QuoteBook, now_ms: int) -> None:
+    from app.game.duels import settle_duel
     from app.game.leaderboard import award_season_badges
     from app.game.leagues import apply_week_results
 
+    if season.kind == DUEL_KIND:
+        settle_duel(db, season, quotes, now_ms)
+        return
     award_season_badges(db, season, quotes, now_ms)
     if season.kind == SeasonKind.WEEK.value:
         apply_week_results(db, season, quotes, now_ms)

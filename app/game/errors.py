@@ -66,3 +66,15 @@ class WrongAnswer(GameError):
 
 class PuzzleNotFound(GameError):
     code = "puzzle_not_found"
+
+
+class DuelNotFound(GameError):
+    code = "duel_not_found"
+
+
+class DuelBusy(GameError):
+    code = "duel_busy"
+
+
+class DuelOwn(GameError):
+    code = "duel_own"

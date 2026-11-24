@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.core.db.dependencies import get_db
-from app.game.errors import GameError, LessonNotFound, PositionNotFound, PuzzleNotFound, StaleQuote
+from app.game.errors import DuelNotFound, GameError, LessonNotFound, PositionNotFound, PuzzleNotFound, StaleQuote
 from app.game.models import Player
 from app.game.players import get_or_create_player
 from app.game.quotes import QuoteBook
@@ -47,7 +47,7 @@ def current_player(
 def _status_for(exc: GameError) -> int:
     if isinstance(exc, StaleQuote):
         return 503
-    if isinstance(exc, (PositionNotFound, LessonNotFound, PuzzleNotFound)):
+    if isinstance(exc, (PositionNotFound, LessonNotFound, PuzzleNotFound, DuelNotFound)):
         return 404
     return 409
 

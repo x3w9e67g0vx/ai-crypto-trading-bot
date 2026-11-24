@@ -325,3 +325,22 @@ class QuestClaim(Base):
     portfolio_id = Column(Integer, ForeignKey("portfolios.id"), nullable=False, index=True)
     code = Column(String, nullable=False)  # stops | take_profit | discipline
     created_at = Column(BigInteger, nullable=False)
+
+
+class Duel(Base):
+    """A 24h one-on-one with a friend: an invite link until accepted, then a two-player `duel` season."""
+
+    __tablename__ = "duels"
+
+    id = Column(Integer, primary_key=True, index=True)
+    challenger_id = Column(Integer, ForeignKey("players.id"), nullable=False, index=True)
+    opponent_id = Column(Integer, ForeignKey("players.id"), nullable=True, index=True)
+    season_id = Column(Integer, ForeignKey("seasons.id"), nullable=True, unique=True)
+    status = Column(String, nullable=False, default="open", index=True)  # open | active | finished
+    winner_id = Column(Integer, ForeignKey("players.id"), nullable=True)
+    created_at = Column(BigInteger, nullable=False)
+    accepted_at = Column(BigInteger, nullable=True)
+
+    challenger = relationship("Player", foreign_keys=[challenger_id])
+    opponent = relationship("Player", foreign_keys=[opponent_id])
+    season = relationship("Season")

@@ -1,4 +1,5 @@
 from app.game.models import Badge, ChatLeagueMember, Player
+from tests.game.conftest import NOW
 from tests.telegram.conftest import buttons, texts
 
 
@@ -157,3 +158,26 @@ def test_banned_player_cannot_toggle_settings(harness, session_factory):
     harness.callback("set:notify_overtaken")
 
     assert _player(session_factory).notify_overtaken is True
+
+
+def test_start_with_duel_accepts_and_tells_both(harness, session_factory):
+    from app.game.duels import create_duel
+    from app.game.models import Duel
+
+    harness.message("/start", user_id=1, username="inviter")
+    with session_factory() as db:
+        duel_id = create_duel(db, db.query(Player).filter_by(telegram_id=1).one(), NOW).id
+        db.commit()
+
+    calls = harness.message(f"/start duel_{duel_id}", user_id=2, username="friend")
+
+    sent = {call.chat_id: call.text for call in calls if getattr(call, "text", None)}
+    assert "началась" in sent[2] and "inviter" in sent[2]
+    assert "принял вызов" in sent[1]
+    assert any(button.web_app for button in buttons(calls[0]))
+    assert _player(session_factory, 2).referred_by_id == _player(session_factory, 1).id
+    with session_factory() as db:
+        assert db.get(Duel, duel_id).status == "active"
+
+    [again] = texts(harness.message(f"/start duel_{duel_id}", user_id=3, username="late"))
+    assert "не действует" in again

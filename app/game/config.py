@@ -115,3 +115,14 @@ XP_PER_PUZZLE = 20
 
 # Season quests: the "discipline" quest fails on a trade losing more than this % of the starting balance.
 QUEST_MAX_LOSS_PCT = 2.0
+
+# Friend duel: a 24h two-player season from the moment the invite is accepted.
+DUEL_KIND = "duel"
+DUEL_MS = DAY_MS
+DUEL_INVITE_TTL_MS = DAY_MS
+# The last result stays on the duel card this long.
+DUEL_RESULT_SHOWN_MS = 3 * DAY_MS
+XP_PER_DUEL_WIN = 50
+XP_PER_DUEL_DRAW = 15
+# Final values closer than this are a draw.
+DUEL_DRAW_EPS = 0.01

@@ -26,3 +26,13 @@ def test_notifier_sends_and_survives_send_error(harness, session_factory, quotes
     with session_factory() as db:
         assert db.query(Notification).count() == 2
     assert asyncio.run(notify_once(harness.bot, session_factory, quotes, at + 60_000)) == 0
+
+
+def test_render_duel_result():
+    from app.game.models import Player
+    from app.game.notifications import Outgoing
+    from app.telegram.notifier import render
+
+    params = {"rival": "bob", "my_pct": 3.2, "rival_pct": -1.1, "score": [2, 1], "outcome": "win", "xp": 50}
+    text = render(Outgoing(Player(nickname="a", language="ru"), "duel_result", params))
+    assert "bob" in text and "+3.20%" in text and "2:1" in text and "+50 XP" in text

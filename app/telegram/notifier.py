@@ -19,6 +19,13 @@ def render(item: Outgoing) -> str:
         params["season"] = t(f"season.{params.pop('season_kind')}", lang=lang)
     if item.kind == "ai_open":
         params["side"] = t(f"side.{params['side']}", lang=lang)
+    if item.kind == "duel_result":
+        mine, theirs = params["score"]
+        text = t(f"notify.duel_{params['outcome']}", lang=lang, rival=params["rival"], my_pct=f"{params['my_pct']:+.2f}",
+                 rival_pct=f"{params['rival_pct']:+.2f}", score=f"{mine}:{theirs}")
+        if params["xp"]:
+            text += " " + t("notify.duel_xp", lang=lang, xp=params["xp"])
+        return text
     return f"{t(f'notify.{item.kind}', lang=lang, **params)}\n\n{t('notify.footer', lang=lang)}"
 
 

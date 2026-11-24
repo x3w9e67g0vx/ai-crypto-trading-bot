@@ -14,6 +14,7 @@ from app.game.config import (
 )
 from app.game.leaderboard import standings
 from app.game.models import (
+    Duel,
     LeagueGroup,
     LeagueMembership,
     Notification,
@@ -24,8 +25,8 @@ from app.game.models import (
 )
 from app.game.quotes import QuoteBook
 
-# When the daily cap bites, earlier kinds win.
-KINDS = ("season_end", "overtaken", "ai_open")
+# When the daily cap bites, earlier kinds win. Kinds without a flag are always sent and skip the cap.
+KINDS = ("duel_result", "season_end", "overtaken", "ai_open")
 FLAGS = {
     "season_end": "notify_season_end",
     "overtaken": "notify_overtaken",
@@ -133,10 +134,25 @@ def _ai_open(db: Session, now_ms: int) -> list[_Candidate]:
     ]
 
 
+def _duel_result(db: Session, quotes: QuoteBook, now_ms: int) -> list[_Candidate]:
+    from app.game.duels import result_for
+
+    duels = (
+        db.query(Duel)
+        .join(Season, Duel.season_id == Season.id)
+        .filter(Duel.status == "finished", Season.ends_at > now_ms - DAY_MS)
+    )
+    return [
+        _Candidate(player_id, "duel_result", str(duel.id), result_for(db, duel, player_id, quotes, now_ms))
+        for duel in duels
+        for player_id in (duel.challenger_id, duel.opponent_id)
+    ]
+
+
 def collect_notifications(db: Session, quotes: QuoteBook, now_ms: int) -> list[Outgoing]:
     """Notifications due now. Each one is recorded before it is sent, so an event never repeats;
     switched-off kinds, banned players and the daily cap are applied here."""
-    candidates = _season_end(db, now_ms) + _overtaken(db, quotes, now_ms) + _ai_open(db, now_ms)
+    candidates = _duel_result(db, quotes, now_ms) + _season_end(db, now_ms) + _overtaken(db, quotes, now_ms) + _ai_open(db, now_ms)
     candidates.sort(key=lambda item: KINDS.index(item.kind))
     if not candidates:
         db.flush()
@@ -153,7 +169,8 @@ def collect_notifications(db: Session, quotes: QuoteBook, now_ms: int) -> list[O
         player = players.get(item.player_id)
         if player is None or player.is_ai or player.is_banned or player.telegram_id is None:
             continue
-        if not getattr(player, FLAGS[item.kind]):
+        capped = item.kind in FLAGS
+        if capped and not getattr(player, FLAGS[item.kind]):
             continue
         if player.id not in sent_today:
             sent_today[player.id] = (
@@ -161,7 +178,7 @@ def collect_notifications(db: Session, quotes: QuoteBook, now_ms: int) -> list[O
                 .filter(Notification.player_id == player.id, Notification.created_at >= day_start)
                 .count()
             )
-        if sent_today[player.id] >= NOTIFY_DAILY_CAP:
+        if capped and sent_today[player.id] >= NOTIFY_DAILY_CAP:
             continue
         seen = db.query(Notification.id).filter_by(player_id=player.id, kind=item.kind, key=item.key).first()
         if seen is not None:

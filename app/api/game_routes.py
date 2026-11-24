@@ -23,11 +23,13 @@ from app.game.config import (
     GAME_SYMBOLS,
     MAX_TRADES_PER_DAY,
     STALE_AFTER_MS,
+    DUEL_KIND,
     STARTING_BALANCE,
     XP_PER_LESSON,
     SeasonKind,
 )
-from app.game.errors import LessonNotFound, PositionExists, PositionNotFound, SymbolLocked, UnknownSymbol
+from app.game.duels import cancel_duel, create_duel, duel_link, duel_portfolio, duel_view
+from app.game.errors import DuelNotFound, LessonNotFound, PositionExists, PositionNotFound, SymbolLocked, UnknownSymbol
 from app.game.insights import ai_entry_why, indicators_at, order_tips, trade_review
 from app.game.leaderboard import standings
 from app.game.leagues import group_portfolio_ids
@@ -41,6 +43,7 @@ from app.game.quotes import QuoteBook
 from app.game.referrals import ref_link
 from app.game.seasons import current_portfolio, ensure_current_season
 from app.game.share import card_sig, share_info, share_text
+from app.i18n.strings import t
 from app.game.trading import (
     close_position,
     open_position,
@@ -54,6 +57,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/game", tags=["game"])
 
 SeasonParam = Literal["sprint", "week"]
+# Screens that also show the running friend duel.
+PlaySeason = Literal["sprint", "week", "duel"]
+
+
+def _play_portfolio(db: Session, player: Player, season: str, now_ms: int) -> Portfolio:
+    if season != DUEL_KIND:
+        return current_portfolio(db, player, season, now_ms)
+    portfolio = duel_portfolio(db, player, now_ms)
+    if portfolio is None:
+        raise DuelNotFound()
+    return portfolio
 
 
 def _player_json(db: Session, player: Player, now_ms: int) -> dict:
@@ -92,6 +106,9 @@ def _portfolio_json(db: Session, portfolio: Portfolio, quotes: QuoteBook, now_ms
 
 def _me_json(db: Session, player: Player, quotes: QuoteBook, now_ms: int) -> dict:
     portfolios = {kind.value: current_portfolio(db, player, kind.value, now_ms) for kind in SeasonKind}
+    duel = duel_portfolio(db, player, now_ms)
+    if duel is not None:
+        portfolios[DUEL_KIND] = duel
     db.commit()
     return {
         "player": _player_json(db, player, now_ms),
@@ -212,7 +229,7 @@ def _position_json(position: Position, quotes: QuoteBook) -> dict:
 
 
 class OrderRequest(BaseModel):
-    season: SeasonParam
+    season: PlaySeason
     symbol: str
     side: Literal["long", "short"]
     amount_usdt: float
@@ -232,7 +249,7 @@ def place_order(
         raise UnknownSymbol(order.symbol)
     if order.symbol not in unlocked_symbols(player):
         raise SymbolLocked(order.symbol)
-    portfolio = current_portfolio(db, player, order.season, now_ms)
+    portfolio = _play_portfolio(db, player, order.season, now_ms)
     value_before = portfolio_value(portfolio, quotes, now_ms, allow_stale=True)
     try:
         position = open_position(
@@ -311,14 +328,14 @@ def review_my_position(
 
 @router.get("/positions")
 def list_positions(
-    season: SeasonParam,
+    season: PlaySeason,
     status: Literal["open", "closed"] = "open",
     player: Player = Depends(current_player),
     db: Session = Depends(get_db),
     quotes: QuoteBook = Depends(get_quotes),
     now_ms: int = Depends(get_now_ms),
 ) -> list[dict]:
-    portfolio = current_portfolio(db, player, season, now_ms)
+    portfolio = _play_portfolio(db, player, season, now_ms)
     db.commit()
     query = db.query(Position).filter(Position.portfolio_id == portfolio.id)
     if status == "open":
@@ -333,14 +350,14 @@ LEADERBOARD_TOP = 100
 
 @router.get("/leaderboard")
 def get_leaderboard(
-    season: SeasonParam,
+    season: PlaySeason,
     player: Player = Depends(current_player),
     db: Session = Depends(get_db),
     quotes: QuoteBook = Depends(get_quotes),
     now_ms: int = Depends(get_now_ms),
 ) -> dict:
     """Week: the player's league group (AI ghosts included); sprint: everyone."""
-    portfolio = current_portfolio(db, player, season, now_ms)
+    portfolio = _play_portfolio(db, player, season, now_ms)
     db.commit()
     group, portfolio_ids = group_portfolio_ids(db, portfolio)
     table = standings(db, portfolio.season, quotes, now_ms, portfolio_ids=portfolio_ids)
@@ -505,6 +522,49 @@ def post_puzzle(
     xp_awarded = answer_puzzle(db, player, body.choice, now_ms)
     db.commit()
     return {"xp_awarded": xp_awarded, "puzzle": puzzle_view(db, player, now_ms), "player": _player_json(db, player, now_ms)}
+
+
+def _duel_json(db: Session, player: Player, quotes: QuoteBook, now_ms: int) -> dict:
+    view = duel_view(db, player, quotes, now_ms)
+    if view["state"] == "open" and settings.BOT_USERNAME:
+        view["link"] = duel_link(settings.BOT_USERNAME, view["id"])
+        view["text"] = t("duel.share", lang=player.language)
+    return view
+
+
+@router.get("/duel")
+def get_duel(
+    player: Player = Depends(current_player),
+    db: Session = Depends(get_db),
+    quotes: QuoteBook = Depends(get_quotes),
+    now_ms: int = Depends(get_now_ms),
+) -> dict:
+    return _duel_json(db, player, quotes, now_ms)
+
+
+@router.post("/duel")
+def post_duel(
+    player: Player = Depends(current_player),
+    db: Session = Depends(get_db),
+    quotes: QuoteBook = Depends(get_quotes),
+    now_ms: int = Depends(get_now_ms),
+) -> dict:
+    """Challenge a friend: returns the invite link (the same one while it is open)."""
+    create_duel(db, player, now_ms)
+    db.commit()
+    return _duel_json(db, player, quotes, now_ms)
+
+
+@router.delete("/duel")
+def delete_duel(
+    player: Player = Depends(current_player),
+    db: Session = Depends(get_db),
+    quotes: QuoteBook = Depends(get_quotes),
+    now_ms: int = Depends(get_now_ms),
+) -> dict:
+    cancel_duel(db, player, now_ms)
+    db.commit()
+    return _duel_json(db, player, quotes, now_ms)
 
 
 @router.get("/quests")

@@ -6,6 +6,9 @@ clock (() -> ms), bot_username, miniapp_url.
 
 from __future__ import annotations
 
+import logging
+import time
+
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandObject, CommandStart
@@ -14,9 +17,13 @@ from aiogram.types import CallbackQuery, Message, User
 from app.game.chat_leagues import ensure_chat_league, join_chat_league
 from app.game.models import ChatLeague
 from app.game.players import start_player
-from app.game.referrals import register_start
+from app.game.duels import accept_duel, parse_duel
+from app.game.errors import DuelBusy, DuelNotFound, DuelOwn
+from app.game.referrals import apply_referral, register_start
 from app.i18n.strings import normalize_lang, t
 from app.telegram import views
+
+logger = logging.getLogger(__name__)
 
 PRIVATE = F.chat.type == "private"
 GROUP = F.chat.type.in_({"group", "supergroup"})
@@ -40,13 +47,46 @@ async def _edit(message: Message, text: str, reply_markup) -> None:
 
 
 async def start(message: Message, command: CommandObject, session_factory, clock, miniapp_url: str) -> None:
+    duel_id = parse_duel(command.args)
     with session_factory() as db:
-        player, _ = register_start(db, tg_user(message.from_user), command.args, clock())
+        now_ms = clock()
+        player, created = register_start(db, tg_user(message.from_user), command.args, now_ms)
         if player.is_banned:
             await message.answer(t("banned", lang=player.language))
             return
+        if duel_id is not None:
+            text, notice = _accept_duel(db, player, duel_id, created, now_ms)
+            await message.answer(text, reply_markup=views.play_keyboard(player.language, miniapp_url))
+            if notice is not None:
+                try:
+                    await message.bot.send_message(*notice)
+                except Exception:
+                    logger.warning("duel accept notice failed", exc_info=True)
+            return
         text, keyboard = views.start_view(player, miniapp_url)
     await message.answer(text, reply_markup=keyboard)
+
+
+def _accept_duel(db, player, duel_id: int, created: bool, now_ms: int) -> tuple[str, tuple[int, str] | None]:
+    """Reply text for the accepting player and (chat_id, text) for the challenger, if any."""
+    lang = player.language
+    try:
+        duel = accept_duel(db, duel_id, player, now_ms)
+    except DuelOwn:
+        return t("duel.own", lang=lang), None
+    except DuelBusy:
+        return t("duel.busy", lang=lang), None
+    except DuelNotFound:
+        return t("duel.not_found", lang=lang), None
+    if created:
+        apply_referral(db, player, duel.challenger_id, now_ms)
+    db.commit()
+    ends = time.strftime("%H:%M", time.gmtime(duel.season.ends_at / 1000))
+    challenger = duel.challenger
+    notice = None
+    if challenger.telegram_id is not None:
+        notice = (challenger.telegram_id, t("duel.accepted", lang=challenger.language, rival=player.nickname, ends=ends))
+    return t("duel.started", lang=lang, rival=challenger.nickname, ends=ends), notice
 
 
 async def play(message: Message, session_factory, clock, miniapp_url: str) -> None:

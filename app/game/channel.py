@@ -19,6 +19,7 @@ from app.game.config import (
     CHANNEL_SLOTS,
     CHART_TIMEFRAME,
     DAY_MS,
+    DUEL_KIND,
     HOUR_MS,
     XP_PER_LESSON,
     SeasonKind,
@@ -299,7 +300,12 @@ def due_posts(db: Session, quotes: QuoteBook, now_ms: int, bot_username: str) ->
     candidates: list[tuple[str, str, Callable[[], Post | None]]] = []
     finished = (
         db.query(Season)
-        .filter(Season.status == "finished", Season.ends_at <= now_ms, Season.ends_at > now_ms - CHANNEL_RESULTS_WINDOW_MS)
+        .filter(
+            Season.status == "finished",
+            Season.kind != DUEL_KIND,
+            Season.ends_at <= now_ms,
+            Season.ends_at > now_ms - CHANNEL_RESULTS_WINDOW_MS,
+        )
         .order_by(Season.ends_at, Season.id)
         .all()
     )
@@ -336,7 +342,7 @@ def preview_post(db: Session, quotes: QuoteBook, kind: str, now_ms: int, bot_use
     """/admin preview: the post as it would look now, not recorded; results use the latest finished season."""
     if kind in CHANNEL_SLOTS:
         return _slot_builders(db, quotes, bot_username)[kind](now_ms)
-    query = db.query(Season).filter(Season.status == "finished")
+    query = db.query(Season).filter(Season.status == "finished", Season.kind != DUEL_KIND)
     if kind == "ai_move":
         query = query.filter(Season.kind == SeasonKind.WEEK.value)
     season = query.order_by(Season.ends_at.desc(), Season.id.desc()).first()
