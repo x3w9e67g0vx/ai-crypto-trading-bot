@@ -19,7 +19,7 @@ from app.game.referrals import ref_link
 from app.game.seasons import current_portfolio
 from app.i18n.strings import t
 
-NOTIFY_FLAGS = ("notify_overtaken", "notify_ai_open", "notify_season_end")
+NOTIFY_FLAGS = ("notify_overtaken", "notify_ai_open", "notify_season_end", "notify_streak")
 LEAGUE_TABLE_ROWS = 30
 
 Screen = tuple[str, InlineKeyboardMarkup | None]

@@ -40,6 +40,7 @@ class Player(Base):
     notify_overtaken = Column(Boolean, nullable=False, default=True, server_default=text("true"))
     notify_ai_open = Column(Boolean, nullable=False, default=True, server_default=text("true"))
     notify_season_end = Column(Boolean, nullable=False, default=True, server_default=text("true"))
+    notify_streak = Column(Boolean, nullable=False, default=True, server_default=text("true"))
 
     created_at = Column(BigInteger, nullable=False)
 

@@ -126,3 +126,11 @@ XP_PER_DUEL_WIN = 50
 XP_PER_DUEL_DRAW = 15
 # Final values closer than this are a draw.
 DUEL_DRAW_EPS = 0.01
+
+# Day streak: a day counts when the player trades, passes a lesson or answers the daily puzzle.
+STREAK_KINDS = ("trade", "lesson_done", "puzzle_done")
+# (days in a row, XP), granted once per streak run.
+STREAK_MILESTONES = ((3, 20), (7, 50), (30, 150))
+# Reminder for a streak of at least this many days not yet extended today, from this UTC hour.
+STREAK_REMIND_MIN = 2
+STREAK_REMIND_HOUR = 18

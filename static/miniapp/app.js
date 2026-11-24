@@ -263,8 +263,22 @@
         return state.me.portfolios[state.season];
     }
 
+    function streakLine() {
+        const st = state.me && state.me.streak;
+        if (!st || !st.days) return `<p class="hint">${esc(t("streak.start"))}</p>`;
+        const left = st.next_milestone ? ` · ${t("streak.next", { n: st.next_milestone - st.days })}` : "";
+        const todo = st.today_done ? "" : ` · ${t("streak.todo")}`;
+        return `<p class="streak ${st.today_done ? "" : "at-risk"}">🔥 ${esc(t("streak.days", { n: st.days }))}<span class="hint">${esc(left + todo)}</span></p>`;
+    }
+
     async function refreshMe() {
         state.me = await api("/game/me");
+        if (state.me.streak && state.me.streak.xp_awarded) {
+            haptic("success");
+            toast(t("streak.toast", { n: state.me.streak.days, xp: state.me.streak.xp_awarded }));
+        }
+        const streakBox = $("#streak");
+        if (streakBox) streakBox.innerHTML = streakLine();
         // The duel just ended: back to the sprint screen.
         if (state.season === "duel" && !hasDuel()) setTimeout(() => go(state.tab));
     }
@@ -665,6 +679,7 @@
         screen.innerHTML = `
             ${seasonSwitch()}
             <div class="season-meta" id="season-meta"></div>
+            <div id="streak">${streakLine()}</div>
             <section class="duel" id="duel" aria-live="polite"></section>
             <section class="level-card" id="friend-duel" aria-live="polite"></section>
             <p id="balance"></p>
@@ -974,7 +989,7 @@
                 </li>`,
             )
             .join("");
-        screen.innerHTML = `<section class="level-card" id="puzzle"></section>
+        screen.innerHTML = `<div id="streak">${streakLine()}</div><section class="level-card" id="puzzle"></section>
             ${levelCard(state.me.player)}
             <p class="hint">${esc(t("learn.how", { xp: lessons.length ? lessons[0].xp : 0, trade_xp: XP_PER_TRADE }))}</p>
             <ul class="list">${rows}</ul>`;

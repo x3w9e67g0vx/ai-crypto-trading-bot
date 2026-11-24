@@ -109,3 +109,10 @@ def test_first_visit_logs_start_and_return(client, db, clock):
     clock["now"] = NOW + 24 * 60 * 60 * 1000
     client.get("/game/me", headers=auth(ALICE))
     assert sorted(kind for (kind,) in db.query(Event.kind)) == ["return", "return", "start"]
+
+
+def test_me_has_streak(client):
+    from tests.api.conftest import auth
+
+    streak = client.get("/game/me", headers=auth()).json()["streak"]
+    assert streak == {"days": 0, "today_done": False, "next_milestone": 3, "xp_awarded": 0}

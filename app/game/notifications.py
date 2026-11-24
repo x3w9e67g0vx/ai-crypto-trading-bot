@@ -9,12 +9,17 @@ from app.game.config import (
     AI_OPEN_LOOKBACK_MS,
     DAY_MS,
     NOTIFY_DAILY_CAP,
+    HOUR_MS,
     SEASON_END_WARNING_MS,
+    STREAK_KINDS,
+    STREAK_REMIND_HOUR,
+    STREAK_REMIND_MIN,
     SeasonKind,
 )
 from app.game.leaderboard import standings
 from app.game.models import (
     Duel,
+    Event,
     LeagueGroup,
     LeagueMembership,
     Notification,
@@ -26,11 +31,12 @@ from app.game.models import (
 from app.game.quotes import QuoteBook
 
 # When the daily cap bites, earlier kinds win. Kinds without a flag are always sent and skip the cap.
-KINDS = ("duel_result", "season_end", "overtaken", "ai_open")
+KINDS = ("duel_result", "season_end", "streak", "overtaken", "ai_open")
 FLAGS = {
     "season_end": "notify_season_end",
     "overtaken": "notify_overtaken",
     "ai_open": "notify_ai_open",
+    "streak": "notify_streak",
 }
 
 
@@ -149,10 +155,31 @@ def _duel_result(db: Session, quotes: QuoteBook, now_ms: int) -> list[_Candidate
     ]
 
 
+def _streak(db: Session, now_ms: int) -> list[_Candidate]:
+    """Evening nudge for a streak that dies at midnight unless the player does something today."""
+    from app.game.channel import day_key
+    from app.game.streaks import active_days, streak_length
+
+    today = now_ms // DAY_MS
+    if now_ms - today * DAY_MS < STREAK_REMIND_HOUR * HOUR_MS:
+        return []
+    def active_on(day: int):
+        return db.query(Event.player_id).filter(
+            Event.kind.in_(STREAK_KINDS), Event.created_at >= day * DAY_MS, Event.created_at < (day + 1) * DAY_MS
+        )
+    at_risk = {pid for (pid,) in active_on(today - 1)} - {pid for (pid,) in active_on(today)}
+    result = []
+    for player_id in sorted(at_risk):
+        days, _ = streak_length(active_days(db, player_id, now_ms), today)
+        if days >= STREAK_REMIND_MIN:
+            result.append(_Candidate(player_id, "streak", day_key(now_ms), {"days": days}))
+    return result
+
+
 def collect_notifications(db: Session, quotes: QuoteBook, now_ms: int) -> list[Outgoing]:
     """Notifications due now. Each one is recorded before it is sent, so an event never repeats;
     switched-off kinds, banned players and the daily cap are applied here."""
-    candidates = _duel_result(db, quotes, now_ms) + _season_end(db, now_ms) + _overtaken(db, quotes, now_ms) + _ai_open(db, now_ms)
+    candidates = _duel_result(db, quotes, now_ms) + _season_end(db, now_ms) + _streak(db, now_ms) + _overtaken(db, quotes, now_ms) + _ai_open(db, now_ms)
     candidates.sort(key=lambda item: KINDS.index(item.kind))
     if not candidates:
         db.flush()

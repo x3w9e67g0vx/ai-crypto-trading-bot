@@ -64,6 +64,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "settings.notify_overtaken": "Меня обогнали в лиге",
         "settings.notify_ai_open": "ИИ открыл позицию (Pro)",
         "settings.notify_season_end": "Сезон кончается через час",
+        "settings.notify_streak": "Напоминание о серии дней",
+        "notify.streak": "🔥 Серия {days} дн. сгорит в полночь UTC. Одна сделка, урок или задачка дня — и она продолжится.",
         "settings.lang": "🌐 Language: English",
         "help.text": (
             "<b>VEYDRANOX</b> — учебная игра в трейдинг против ИИ.\n\n"
@@ -205,6 +207,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "settings.notify_overtaken": "Someone overtook me",
         "settings.notify_ai_open": "AI opened a position (Pro)",
         "settings.notify_season_end": "Season ends in an hour",
+        "settings.notify_streak": "Day streak reminder",
+        "notify.streak": "🔥 Your {days}-day streak ends at midnight UTC. One trade, lesson or daily puzzle keeps it going.",
         "settings.lang": "🌐 Язык: русский",
         "help.text": (
             "<b>VEYDRANOX</b> — an educational trading game against AI.\n\n"

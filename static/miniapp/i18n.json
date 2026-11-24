@@ -204,7 +204,12 @@
     "fduel.score": "счёт {score}",
     "errors.duel_not_found": "Дуэль не найдена или уже закончилась",
     "errors.duel_busy": "У тебя уже идёт дуэль",
-    "errors.duel_own": "Это твой собственный вызов"
+    "errors.duel_own": "Это твой собственный вызов",
+    "streak.days": "{n} дн. подряд",
+    "streak.next": "до бонуса {n} дн.",
+    "streak.todo": "сегодня ещё не засчитан: сделка, урок или задачка",
+    "streak.start": "🔥 Сделка, урок или задачка дня — начни серию дней",
+    "streak.toast": "🔥 Серия {n} дней! +{xp} XP"
   },
   "en": {
     "disclaimer": "VEYDRANOX is an educational game. Money is virtual, nothing here is investment advice. 18+.",
@@ -411,6 +416,11 @@
     "fduel.score": "score {score}",
     "errors.duel_not_found": "Duel not found or already over",
     "errors.duel_busy": "You already have a duel running",
-    "errors.duel_own": "That's your own challenge"
+    "errors.duel_own": "That's your own challenge",
+    "streak.days": "{n}-day streak",
+    "streak.next": "{n} d to bonus",
+    "streak.todo": "today not counted yet: a trade, lesson or puzzle",
+    "streak.start": "🔥 A trade, lesson or daily puzzle starts your day streak",
+    "streak.toast": "🔥 {n}-day streak! +{xp} XP"
   }
 }

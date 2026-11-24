@@ -42,6 +42,7 @@ from app.game.progress import complete_lesson, completed_lessons, level_info
 from app.game.quotes import QuoteBook
 from app.game.referrals import ref_link
 from app.game.seasons import current_portfolio, ensure_current_season
+from app.game.streaks import claim_streak
 from app.game.share import card_sig, share_info, share_text
 from app.i18n.strings import t
 from app.game.trading import (
@@ -109,9 +110,11 @@ def _me_json(db: Session, player: Player, quotes: QuoteBook, now_ms: int) -> dic
     duel = duel_portfolio(db, player, now_ms)
     if duel is not None:
         portfolios[DUEL_KIND] = duel
+    streak = claim_streak(db, player, now_ms)
     db.commit()
     return {
         "player": _player_json(db, player, now_ms),
+        "streak": streak,
         "portfolios": {
             kind: _portfolio_json(db, portfolio, quotes, now_ms) for kind, portfolio in portfolios.items()
         },
