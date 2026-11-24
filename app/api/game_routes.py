@@ -373,6 +373,9 @@ def get_leaderboard(
             "return_pct": row.return_pct,
             "trades": row.trades,
             "qualified": row.qualified,
+            "drawdown_pct": row.drawdown_pct,
+            "stop_share": row.stop_share,
+            "quality": row.quality,
             "is_me": row.portfolio_id == portfolio.id,
         }
         for row in table

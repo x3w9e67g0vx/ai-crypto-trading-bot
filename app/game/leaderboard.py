@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -22,6 +23,13 @@ class Standing:
     trades: int
     qualified: bool
     rank: int | None
+    drawdown_pct: float = 0.0
+    stop_share: float | None = None  # share of positions opened with a stop-loss
+
+    @property
+    def quality(self) -> float:
+        """Return penalised by the worst drop: a big win with a crash scores low."""
+        return self.return_pct - self.drawdown_pct
 
 
 def standings(
@@ -37,9 +45,25 @@ def standings(
     if portfolio_ids is not None:
         query = query.filter(Portfolio.id.in_(list(portfolio_ids)) | Player.is_ai.is_(True))
 
+    portfolios = query.all()
+    ids = [portfolio.id for portfolio in portfolios]
+    history = defaultdict(list)
+    for portfolio_id, value in (
+        db.query(PortfolioSnapshot.portfolio_id, PortfolioSnapshot.value)
+        .filter(PortfolioSnapshot.portfolio_id.in_(ids))
+        .order_by(PortfolioSnapshot.created_at)
+    ):
+        history[portfolio_id].append(value)
+    stops = defaultdict(list)
+    for portfolio_id, stop_loss in db.query(Position.portfolio_id, Position.stop_loss).filter(
+        Position.portfolio_id.in_(ids)
+    ):
+        stops[portfolio_id].append(stop_loss is not None)
+
     rows = []
-    for portfolio in query.all():
+    for portfolio in portfolios:
         value = portfolio_value(portfolio, quotes, now_ms, allow_stale=True)
+        has_stop = stops[portfolio.id]
         rows.append(
             Standing(
                 portfolio_id=portfolio.id,
@@ -51,6 +75,8 @@ def standings(
                 trades=portfolio.trades_count,
                 qualified=portfolio.trades_count >= MIN_QUALIFYING_TRADES,
                 rank=None,
+                drawdown_pct=_drawdown([*history[portfolio.id], value]) * 100,
+                stop_share=sum(has_stop) / len(has_stop) if has_stop else None,
             )
         )
     rows.sort(key=lambda row: (not row.qualified, -row.return_pct, row.portfolio_id))
@@ -75,13 +101,19 @@ def win_rate(db: Session, portfolio: Portfolio) -> float | None:
 
 
 def max_drawdown(db: Session, portfolio: Portfolio) -> float:
-    values = [STARTING_BALANCE] + [
-        snapshot.value
-        for snapshot in db.query(PortfolioSnapshot)
-        .filter_by(portfolio_id=portfolio.id)
-        .order_by(PortfolioSnapshot.created_at)
-    ]
-    peak, worst = values[0], 0.0
+    return _drawdown(
+        [
+            snapshot.value
+            for snapshot in db.query(PortfolioSnapshot)
+            .filter_by(portfolio_id=portfolio.id)
+            .order_by(PortfolioSnapshot.created_at)
+        ]
+    )
+
+
+def _drawdown(values: list[float]) -> float:
+    """Worst peak-to-trough drop as a fraction, starting from the starting balance."""
+    peak, worst = STARTING_BALANCE, 0.0
     for value in values:
         peak = max(peak, value)
         if peak > 0:

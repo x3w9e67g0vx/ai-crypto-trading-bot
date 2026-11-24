@@ -73,3 +73,10 @@ def test_i18n_covers_share():
     keys = {f"share.{name}" for name in ("title", "button", "hint", "send", "story", "close")}
     for lang in ("ru", "en"):
         assert keys <= set(strings[lang]), (lang, keys - set(strings[lang]))
+
+
+def test_i18n_covers_quality_ranking():
+    strings = _strings()
+    keys = {"rank.by.return", "rank.by.quality", "rank.quality_note", "rank.quality_hint"}
+    for lang in ("ru", "en"):
+        assert keys <= set(strings[lang]), lang

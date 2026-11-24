@@ -13,6 +13,7 @@
         season: "week",
         symbol: "BTC/USDT",
         tab: "trade",
+        rankBy: "return",
         quotes: null,
         timers: [],
         chart: null,
@@ -746,20 +747,44 @@
     async function rankScreen() {
         const board = await api(`/game/leaderboard?season=${state.season}`);
         const title = board.scope === "group" ? t("rank.group", { tier: t(`league.${board.tier}`) }) : t("rank.global");
+        const byQuality = state.rankBy === "quality";
+        if (byQuality) {
+            // Same rules as the server ranking: qualified humans only, AI ghosts listed unranked.
+            board.rows.sort((a, b) => (a.qualified ? 0 : 1) - (b.qualified ? 0 : 1) || b.quality - a.quality);
+            let rank = 0;
+            board.rows.forEach((row) => (row.rank = row.qualified && !row.is_ai ? ++rank : null));
+        }
         const rows = board.rows.length
             ? board.rows
                   .map((row) => {
-                      const note = row.is_ai ? t("rank.ai_ghost") : row.qualified ? t("rank.trades", { n: row.trades }) : t("rank.unranked");
+                      let note = row.is_ai ? t("rank.ai_ghost") : row.qualified ? t("rank.trades", { n: row.trades }) : t("rank.unranked");
+                      if (byQuality) {
+                          const stops = row.stop_share === null ? "–" : `${Math.round(row.stop_share * 100)}%`;
+                          note = t("rank.quality_note", { dd: pct(-row.drawdown_pct), stops });
+                      }
+                      const score = byQuality ? row.quality : row.return_pct;
                       return `<li class="${row.is_ai ? "ai-row" : ""} ${row.is_me ? "me" : ""}">
                         <span class="rank-cell num">${row.rank ?? "–"}</span>
                         <div class="grow"><div class="nick">${esc(row.nickname)}</div><div class="hint">${esc(note)}</div></div>
-                        <span class="num ${trend(row.return_pct)}">${pct(row.return_pct)}</span>
+                        <span class="num ${trend(score)}">${pct(score)}</span>
                       </li>`;
                   })
                   .join("")
             : `<li class="empty">${esc(t("rank.empty"))}</li>`;
-        screen.innerHTML = `${seasonSwitch()}<h2>${esc(title)}</h2><ul class="list">${rows}</ul>`;
+        const rankSwitch = `<div class="segmented" role="group">
+            ${["return", "quality"]
+                .map((by) => `<button data-rank-by="${by}" aria-pressed="${state.rankBy === by}">${esc(t(`rank.by.${by}`))}</button>`)
+                .join("")}
+        </div>`;
+        screen.innerHTML = `${seasonSwitch()}<h2>${esc(title)}</h2>${rankSwitch}
+            ${byQuality ? `<p class="hint">${esc(t("rank.quality_hint"))}</p>` : ""}<ul class="list">${rows}</ul>`;
         bindSeasonSwitch();
+        screen.querySelectorAll("[data-rank-by]").forEach((button) => {
+            button.onclick = () => {
+                state.rankBy = button.dataset.rankBy;
+                go(state.tab);
+            };
+        });
     }
 
     // ---------- AI ----------

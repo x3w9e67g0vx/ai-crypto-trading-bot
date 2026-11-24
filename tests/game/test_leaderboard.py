@@ -86,3 +86,29 @@ def test_beat_ai_badge(db, season, quotes):
     codes = {(badge.player_id, badge.code) for badge in award_season_badges(db, season, quotes, NOW)}
     assert (winner.player_id, "beat_ai") in codes
     assert (loser.player_id, "beat_ai") not in codes
+
+
+def test_quality_drawdown_and_stop_share(db, season, quotes):
+    careful = make_portfolio(db, season, 11_000.0, 5, nickname="careful")
+    reckless = make_portfolio(db, season, 12_000.0, 5, nickname="reckless")
+    db.add(PortfolioSnapshot(portfolio_id=reckless.id, value=15_000.0, created_at=NOW))
+    db.add(PortfolioSnapshot(portfolio_id=reckless.id, value=7_500.0, created_at=NOW + 1))
+    for portfolio, stop in ((careful, 0.9), (careful, 0.9), (reckless, None), (reckless, 0.9)):
+        db.add(Position(portfolio_id=portfolio.id, symbol="BTC/USDT", side="long", qty=1, entry_price=1,
+                        reserved=1, opened_at=NOW, stop_loss=stop, closed_at=NOW, exit_price=1, pnl=0,
+                        close_reason="manual"))
+    db.flush()
+    rows = {row.nickname: row for row in standings(db, season, quotes, NOW)}
+    assert rows["careful"].drawdown_pct == pytest.approx(0.0)
+    assert rows["careful"].stop_share == pytest.approx(1.0)
+    assert rows["careful"].quality == pytest.approx(10.0)
+    assert rows["reckless"].drawdown_pct == pytest.approx(50.0)
+    assert rows["reckless"].stop_share == pytest.approx(0.5)
+    assert rows["reckless"].quality == pytest.approx(20.0 - 50.0)
+    assert rows["reckless"].rank == 1  # PnL ranking is unchanged
+
+
+def test_quality_without_trades(db, season, quotes):
+    make_portfolio(db, season, 10_000.0, 0, nickname="new")
+    row = standings(db, season, quotes, NOW)[0]
+    assert row.stop_share is None and row.drawdown_pct == 0.0

@@ -51,6 +51,8 @@ def test_week_leaderboard_is_my_group_with_ai_ghosts(client, db):
     assert rows["LSTM"]["is_ai"] is True
     assert rows["LSTM"]["rank"] is None
     assert rows["Bob"]["is_me"] is False
+    assert rows["alice"]["stop_share"] == 0.0
+    assert {"drawdown_pct", "quality"} <= set(rows["alice"])
 
 
 def test_sprint_leaderboard_global_marks_me(client, db):
