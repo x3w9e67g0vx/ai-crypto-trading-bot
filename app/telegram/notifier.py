@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramRetryAfter
 
 from app.game.notifications import Outgoing, collect_notifications
 from app.game.quotes import QuoteBook
@@ -41,7 +42,10 @@ async def notify_once(bot: Bot, session_factory, quotes: QuoteBook, now_ms: int)
     delivered = 0
     for chat_id, text in messages:
         try:
-            await bot.send_message(chat_id, text)
+            try:
+                await bot.send_message(chat_id, text)
+            except TelegramRetryAfter:  # one retry; make_bot's session gate waits retry_after first
+                await bot.send_message(chat_id, text)
             delivered += 1
         except Exception:
             logger.warning("notification to %s failed", chat_id, exc_info=True)

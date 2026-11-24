@@ -36,3 +36,27 @@ def test_render_duel_result():
     params = {"rival": "bob", "my_pct": 3.2, "rival_pct": -1.1, "score": [2, 1], "outcome": "win", "xp": 50}
     text = render(Outgoing(Player(nickname="a", language="ru"), "duel_result", params))
     assert "bob" in text and "+3.20%" in text and "2:1" in text and "+50 XP" in text
+
+
+def test_notifier_retries_once_after_429(harness, session_factory, quotes, monkeypatch):
+    from aiogram.exceptions import TelegramRetryAfter
+
+    harness.message("/rank", user_id=1, username="one")
+    with session_factory() as db:
+        week = ensure_current_season(db, SeasonKind.WEEK, harness.clock["now"])
+        db.query(Portfolio).filter_by(season_id=week.id).update({"trades_count": 1})
+        db.commit()
+        at = week.ends_at - 30 * 60_000
+    real = harness.session.make_request
+    flooded = []
+
+    async def flood_once(bot, method, timeout=None):
+        if not flooded:
+            flooded.append(method)
+            raise TelegramRetryAfter(method=method, message="429", retry_after=1)
+        return await real(bot, method, timeout)
+
+    monkeypatch.setattr(harness.session, "make_request", flood_once)
+    harness.session.calls.clear()
+    assert asyncio.run(notify_once(harness.bot, session_factory, quotes, at)) == 1
+    assert len(texts(harness.session.calls)) == 1

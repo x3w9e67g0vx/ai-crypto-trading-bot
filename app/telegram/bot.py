@@ -12,9 +12,10 @@ import time
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
-from aiogram.exceptions import TelegramRetryAfter
 from aiogram.client.session.aiohttp import AiohttpSession
-from aiogram.types import BotCommand, BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats
+from aiogram.client.session.middlewares.base import BaseRequestMiddleware
+from aiogram.exceptions import TelegramAPIError, TelegramNetworkError, TelegramRetryAfter
+from aiogram.types import BotCommand, BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats, User
 
 from app.core.config import settings
 from app.game.quote_store import run_quote_sync
@@ -79,11 +80,51 @@ async def set_commands(bot: Bot) -> None:
     await bot.set_my_description(t("disclaimer", lang="en"))
 
 
+class RetryAfterGate(BaseRequestMiddleware):
+    """After a 429, hold every request of this bot until Telegram's retry_after has passed.
+
+    It never resends by itself: callers (aiogram polling, our loops) decide whether to retry,
+    so polling's 1-5s backoff can no longer hammer Telegram during flood control.
+    """
+
+    def __init__(self, clock=time.monotonic, sleep=asyncio.sleep):
+        self.clock, self.sleep, self.until = clock, sleep, 0.0
+
+    async def __call__(self, make_request, bot, method):
+        if (wait := self.until - self.clock()) > 0:
+            await self.sleep(wait)
+        try:
+            return await make_request(bot, method)
+        except TelegramRetryAfter as e:
+            self.until = max(self.until, self.clock() + e.retry_after)
+            logger.warning("Telegram 429 on %s, holding requests for %ss", type(method).__name__, e.retry_after)
+            raise
+
+
 def make_bot() -> Bot:
     # aiohttp ignores HTTPS_PROXY, so pass it explicitly when Telegram is reachable only through a proxy.
     proxy = os.getenv("TELEGRAM_PROXY") or os.getenv("HTTPS_PROXY") or os.getenv("https_proxy")
-    session = AiohttpSession(proxy=proxy) if proxy else None
+    session = AiohttpSession(proxy=proxy) if proxy else AiohttpSession()
+    session.middleware(RetryAfterGate())
     return Bot(token=settings.TELEGRAM_BOT_TOKEN, session=session, default=DefaultBotProperties(parse_mode="HTML"))
+
+
+async def wait_for_me(bot: Bot, sleep=asyncio.sleep) -> User:
+    """getMe until it works. bot.me() caches the result, so start_polling does not call getMe again.
+
+    429: the session gate waits retry_after before the next try. Network errors: exponential pause up to 60s.
+    Auth errors (bad token) propagate and stop the process.
+    """
+    delay = 1
+    while True:
+        try:
+            return await bot.me()
+        except TelegramRetryAfter:
+            continue
+        except TelegramNetworkError as e:
+            logger.warning("Telegram unreachable (%s), retry in %ss", e.message, delay)
+            await sleep(delay)
+            delay = min(delay * 2, 60)
 
 
 async def main() -> None:
@@ -93,29 +134,27 @@ async def main() -> None:
     from app.core.db.session import SessionLocal
 
     bot = make_bot()
-    quotes = QuoteBook()
-    while True:  # Telegram flood control on startup: wait it out instead of crashing
+    sync = None
+    try:  # one try for the whole life of the bot, so the HTTP session is closed on any exit path
+        me = await wait_for_me(bot)
+        quotes = QuoteBook()
+        dp = build_dispatcher(
+            session_factory=SessionLocal,
+            quotes=quotes,
+            clock=lambda: int(time.time() * 1000),
+            bot_username=me.username or "",
+            miniapp_url=settings.MINIAPP_URL,
+            admin_chat_id=settings.ADMIN_CHAT_ID,
+        )
         try:
-            me = await bot.get_me()
-            break
-        except TelegramRetryAfter as e:
-            logging.warning("getMe flood control, retry in %ss", e.retry_after)
-            await asyncio.sleep(e.retry_after + 1)
-    dp = build_dispatcher(
-        session_factory=SessionLocal,
-        quotes=quotes,
-        clock=lambda: int(time.time() * 1000),
-        bot_username=me.username or "",
-        miniapp_url=settings.MINIAPP_URL,
-        admin_chat_id=settings.ADMIN_CHAT_ID,
-    )
-    await set_commands(bot)
-
-    sync = asyncio.create_task(run_quote_sync(SessionLocal, quotes, publish=False))
-    try:
+            await set_commands(bot)
+        except TelegramAPIError as e:  # menus are cosmetic; never block polling on them
+            logger.warning("set_commands failed: %s", e)
+        sync = asyncio.create_task(run_quote_sync(SessionLocal, quotes, publish=False))
         await dp.start_polling(bot)
     finally:
-        sync.cancel()
+        if sync is not None:
+            sync.cancel()
         await bot.session.close()
 
 
