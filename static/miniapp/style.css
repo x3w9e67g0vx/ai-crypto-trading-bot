@@ -551,3 +551,13 @@ dialog h2 {
 .puzzle-choices button {
     text-align: center;
 }
+
+/* Season quests */
+.quest.done .num {
+    color: var(--long);
+}
+
+.quest.failed .grow {
+    opacity: 0.6;
+    text-decoration: line-through;
+}

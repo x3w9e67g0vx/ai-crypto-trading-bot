@@ -35,6 +35,7 @@ from app.game.lessons import Lesson, get_lesson, get_lessons
 from app.game.models import Badge, Player, Portfolio, Position
 from app.game.players import unlocked_symbols, validate_nickname
 from app.game.puzzle import answer_puzzle, puzzle_view
+from app.game.quests import claim_quests
 from app.game.progress import complete_lesson, completed_lessons, level_info
 from app.game.quotes import QuoteBook
 from app.game.referrals import ref_link
@@ -504,6 +505,19 @@ def post_puzzle(
     xp_awarded = answer_puzzle(db, player, body.choice, now_ms)
     db.commit()
     return {"xp_awarded": xp_awarded, "puzzle": puzzle_view(db, player, now_ms), "player": _player_json(db, player, now_ms)}
+
+
+@router.get("/quests")
+def get_quests(
+    season: SeasonParam,
+    player: Player = Depends(current_player),
+    db: Session = Depends(get_db),
+    now_ms: int = Depends(get_now_ms),
+) -> dict:
+    portfolio = current_portfolio(db, player, season, now_ms)
+    rows, xp_awarded = claim_quests(db, portfolio, now_ms)
+    db.commit()
+    return {"quests": rows, "xp_awarded": xp_awarded, "player": _player_json(db, player, now_ms)}
 
 
 class ShareRequest(BaseModel):

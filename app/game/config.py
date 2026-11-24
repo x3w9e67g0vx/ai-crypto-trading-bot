@@ -112,3 +112,6 @@ PUZZLE_MIN_AGE_MS = 2 * DAY_MS
 PUZZLE_MOVE_PCT = 0.5
 PUZZLE_FLAT_PCT = 0.2
 XP_PER_PUZZLE = 20
+
+# Season quests: the "discipline" quest fails on a trade losing more than this % of the starting balance.
+QUEST_MAX_LOSS_PCT = 2.0

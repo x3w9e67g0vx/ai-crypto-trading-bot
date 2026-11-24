@@ -181,7 +181,13 @@
     "puzzle.note": "Индикаторы подсказывают, но не гарантируют: «пропустить» верно, когда цена почти не сдвинулась.",
     "puzzle.lesson": "Урок по теме →",
     "puzzle.toast": "Верно! +{xp} XP",
-    "errors.puzzle_not_found": "Задачки на сегодня нет — мало истории цен."
+    "errors.puzzle_not_found": "Задачки на сегодня нет — мало истории цен.",
+    "quests.title": "🎯 Квесты сезона",
+    "quests.stops": "Поставь стоп в 5 сделках",
+    "quests.take_profit": "Закрой сделку по тейку",
+    "quests.discipline": "5 сделок без потери больше 2% депозита",
+    "quests.failed": "Провален: одна сделка потеряла больше 2%",
+    "quests.toast": "Квест выполнен! +{xp} XP"
   },
   "en": {
     "disclaimer": "VEYDRANOX is an educational game. Money is virtual, nothing here is investment advice. 18+.",
@@ -365,6 +371,12 @@
     "puzzle.note": "Indicators hint, they don't guarantee. “Skip” is right when the price barely moved.",
     "puzzle.lesson": "Lesson on this →",
     "puzzle.toast": "Correct! +{xp} XP",
-    "errors.puzzle_not_found": "No puzzle today: not enough price history."
+    "errors.puzzle_not_found": "No puzzle today: not enough price history.",
+    "quests.title": "🎯 Season quests",
+    "quests.stops": "Set a stop on 5 trades",
+    "quests.take_profit": "Close a trade at take profit",
+    "quests.discipline": "5 trades, none losing more than 2% of the deposit",
+    "quests.failed": "Failed: one trade lost more than 2%",
+    "quests.toast": "Quest done! +{xp} XP"
   }
 }

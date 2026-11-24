@@ -311,3 +311,17 @@ class PuzzleAnswer(Base):
     choice = Column(String, nullable=False)
     correct = Column(Boolean, nullable=False)
     created_at = Column(BigInteger, nullable=False)
+
+
+class QuestClaim(Base):
+    """A season quest the player finished; its XP was granted once."""
+
+    __tablename__ = "quest_claims"
+    __table_args__ = (
+        UniqueConstraint("portfolio_id", "code", name="uq_quest_claim"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    portfolio_id = Column(Integer, ForeignKey("portfolios.id"), nullable=False, index=True)
+    code = Column(String, nullable=False)  # stops | take_profit | discipline
+    created_at = Column(BigInteger, nullable=False)

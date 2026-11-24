@@ -483,14 +483,41 @@
     }
 
     async function refreshTrade() {
-        const [rows, closed] = await Promise.all([
+        const [rows, closed, quests] = await Promise.all([
             api(`/game/positions?season=${state.season}`),
             api(`/game/positions?season=${state.season}&status=closed`),
+            api(`/game/quests?season=${state.season}`),
             refreshMe(),
         ]);
         renderPositions(rows);
         renderHistory(closed);
+        renderQuests(quests);
         renderSeasonMeta();
+    }
+
+    function renderQuests(body) {
+        const box = $("#quests");
+        if (!box) return;
+        if (body.xp_awarded) {
+            haptic("success");
+            toast(t("quests.toast", { xp: body.xp_awarded }));
+            state.me.player = body.player;
+        }
+        const rows = body.quests
+            .map((q) => {
+                const mark = q.done ? "✓" : q.failed ? "✗" : `${q.progress}/${q.target}`;
+                const note = q.failed ? `<div class="hint">${esc(t("quests.failed"))}</div>` : "";
+                return `<li class="quest ${q.done ? "done" : ""} ${q.failed ? "failed" : ""}">
+                    <div class="grow">${esc(t(`quests.${q.code}`))}${note}<div class="hint">${esc(t("learn.reward", { xp: q.xp }))}</div></div>
+                    <span class="num">${mark}</span>
+                    <button class="small-btn" data-quest-lesson="${q.lesson_id}">${esc(t("puzzle.lesson"))}</button>
+                  </li>`;
+            })
+            .join("");
+        box.innerHTML = `<h3><span>${esc(t("quests.title"))}</span></h3><ul class="list">${rows}</ul>`;
+        box.querySelectorAll("[data-quest-lesson]").forEach((button) => {
+            button.onclick = () => openLesson(button.dataset.questLesson);
+        });
     }
 
     async function refreshDuel() {
@@ -595,6 +622,7 @@
                 <button class="short" id="sell-short"></button>
               </div>
             </section>
+            <section class="level-card" id="quests"></section>
             <h2>${esc(t("positions.open"))}</h2>
             <ul class="list" id="positions"></ul>
             <h2>${esc(t("positions.history"))}</h2>
