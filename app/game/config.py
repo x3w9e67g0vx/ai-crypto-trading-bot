@@ -118,6 +118,11 @@ REPLAY_GROUP = 12
 REPLAY_SHOW = 24
 REPLAY_LOOKBACK_MS = 30 * DAY_MS
 XP_PER_REPLAY = 15
+# Scenarios: replay weeks picked by episode shape; random one of the SCENARIO_TOP best-fitting weeks.
+SCENARIO_KINDS = ("crash", "pump_dump", "flat")
+SCENARIO_TOP = 5
+SCENARIO_MAX_LOSS_PCT = 3.0
+XP_PER_SCENARIO = 20
 
 # "Guess the AI": a bet on the next candle; XP per correct half, capped per UTC day.
 XP_PER_GUESS_HIT = 5
@@ -141,7 +146,7 @@ XP_PER_DUEL_DRAW = 15
 DUEL_DRAW_EPS = 0.01
 
 # Day streak: a day counts when the player trades, passes a lesson or answers the daily puzzle.
-STREAK_KINDS = ("trade", "lesson_done", "puzzle_done", "replay_done")
+STREAK_KINDS = ("trade", "lesson_done", "puzzle_done", "replay_done", "scenario_done")
 # (days in a row, XP), granted once per streak run.
 STREAK_MILESTONES = ((3, 20), (7, 50), (30, 150))
 # Reminder for a streak of at least this many days not yet extended today, from this UTC hour.

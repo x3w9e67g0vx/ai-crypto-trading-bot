@@ -38,7 +38,7 @@ from app.game.models import Badge, Player, Portfolio, Position
 from app.game.players import unlocked_symbols, validate_nickname
 from app.game.guesses import guess_view, make_guess
 from app.game.puzzle import answer_puzzle, puzzle_view
-from app.game.replay import finish_replay, replay_view
+from app.game.replay import finish_replay, finish_scenario, replay_view, scenario_view
 from app.game.quests import claim_quests
 from app.game.progress import complete_lesson, completed_lessons, level_info
 from app.game.quotes import QuoteBook
@@ -548,6 +548,35 @@ def post_replay_finish(
     now_ms: int = Depends(get_now_ms),
 ) -> dict:
     xp_awarded = finish_replay(db, player, now_ms)
+    db.commit()
+    return {"xp_awarded": xp_awarded, "player": _player_json(db, player, now_ms)}
+
+
+ScenarioKind = Literal["crash", "pump_dump", "flat"]
+
+
+@router.get("/scenario")
+def get_scenario(
+    kind: ScenarioKind,
+    player: Player = Depends(current_player),
+    db: Session = Depends(get_db),
+    now_ms: int = Depends(get_now_ms),
+) -> dict:
+    return {"scenario": scenario_view(db, now_ms, kind)}
+
+
+class ScenarioFinishRequest(BaseModel):
+    passed: bool
+
+
+@router.post("/scenario/finish")
+def post_scenario_finish(
+    body: ScenarioFinishRequest,
+    player: Player = Depends(current_player),
+    db: Session = Depends(get_db),
+    now_ms: int = Depends(get_now_ms),
+) -> dict:
+    xp_awarded = finish_scenario(db, player, body.passed, now_ms)
     db.commit()
     return {"xp_awarded": xp_awarded, "player": _player_json(db, player, now_ms)}
 

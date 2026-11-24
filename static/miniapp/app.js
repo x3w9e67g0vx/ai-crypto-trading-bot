@@ -1084,6 +1084,9 @@
         screen.innerHTML = `<div id="streak">${streakLine()}</div><section class="level-card" id="puzzle"></section>
             <section class="level-card"><h3><span>${esc(t("replay.title"))}</span><button class="small-btn" id="replay-open">${esc(t("replay.open"))}</button></h3>
               <p class="hint">${esc(t("replay.about"))}</p></section>
+            <section class="level-card"><h3><span>${esc(t("scenario.title"))}</span></h3>
+              <p class="hint">${esc(t("scenario.about"))}</p>
+              <div class="quiz-options puzzle-choices">${SCENARIO_KINDS.map((kind) => `<button data-scenario="${kind}">${esc(t(`scenario.${kind}`))}</button>`).join("")}</div></section>
             ${levelCard(state.me.player)}
             <p class="hint">${esc(t("learn.how", { xp: lessons.length ? lessons[0].xp : 0, trade_xp: XP_PER_TRADE }))}</p>
             <ul class="list">${rows}</ul>`;
@@ -1091,6 +1094,9 @@
             button.onclick = () => lessonScreen(button.dataset.lesson);
         });
         $("#replay-open").onclick = () => replayScreen();
+        screen.querySelectorAll("[data-scenario]").forEach((button) => {
+            button.onclick = () => replayScreen(button.dataset.scenario);
+        });
         renderPuzzle(puzzle.puzzle);
     }
 
@@ -1098,16 +1104,19 @@
 
     const REPLAY_TICK_MS = 1600;
     const REPLAY_START = 10000;
+    const SCENARIO_KINDS = ["crash", "pump_dump", "flat"];
 
-    async function replayScreen() {
-        const { replay } = await api("/game/replay");
+    // kind = a scenario (crash / pump_dump / flat) with a loss limit; none = a random week.
+    async function replayScreen(kind) {
+        const replay = kind ? (await api(`/game/scenario?kind=${kind}`)).scenario : (await api("/game/replay")).replay;
         if (!replay) {
             toast(t("replay.none"));
             return;
         }
         screen.innerHTML = `<button class="small-btn" id="replay-back">${esc(t("learn.back"))}</button>
             <section class="level-card">
-              <h3><span>${esc(t("replay.title"))}</span><span class="hint">${esc(t("learn.reward", { xp: replay.xp }))}</span></h3>
+              <h3><span>${esc(kind ? t(`scenario.${kind}`) : t("replay.title"))}</span><span class="hint">${esc(t("learn.reward", { xp: replay.xp }))}</span></h3>
+              ${kind ? `<p><strong>${esc(t("scenario.goal", { loss: replay.max_loss }))}</strong></p>` : ""}
               <p class="hint">${esc(t("replay.ask"))}</p>
               <div id="replay-chart"></div>
               <p id="replay-stats"></p>
@@ -1124,6 +1133,8 @@
         let idx = replay.show;
         let cash = REPLAY_START;
         let pos = null;
+        let traded = false;
+        const floor = kind ? REPLAY_START * (1 - replay.max_loss / 100) : 0;
         const markers = [];
         const last = () => candles[idx - 1];
         const equity = () => (pos ? cash + pos.qty * (pos.side === "long" ? 1 : -1) * (last().close - pos.entry) : cash);
@@ -1153,6 +1164,7 @@
                 if (act === "close" || (pos && pos.side !== act)) close();
                 if (act !== "close" && !pos) {
                     pos = { side: act, entry: last().close, qty: cash / last().close };
+                    traded = true;
                     mark(act === "long" ? "L" : "S", act === "long" ? "#1f9d6b" : "#d9475b");
                 }
                 stats();
@@ -1166,9 +1178,12 @@
             $("#replay-actions").hidden = true;
             const mine = (cash / REPLAY_START - 1) * 100;
             const hold = (last().close / candles[replay.show - 1].close - 1) * 100;
+            const passed = traded && cash >= floor;
             let xp = 0;
             try {
-                const result = await api("/game/replay/finish", { method: "POST" });
+                const result = kind
+                    ? await api("/game/scenario/finish", { method: "POST", body: { passed } })
+                    : await api("/game/replay/finish", { method: "POST" });
                 xp = result.xp_awarded;
                 state.me.player = result.player;
             } catch (error) {
@@ -1176,11 +1191,14 @@
             }
             if (xp) toast(t("replay.toast", { xp }));
             if (!$("#replay-result")) return; // the player left the screen meanwhile
-            haptic("success");
+            haptic(kind && !passed ? "error" : "success");
+            const verdict = kind
+                ? t(passed ? "scenario.passed" : traded ? "scenario.failed" : "scenario.no_trade", { loss: replay.max_loss })
+                : t(mine >= hold ? "replay.beat" : "replay.lost");
             $("#replay-result").innerHTML = `<p><strong>${esc(t("replay.done", { symbol: replay.symbol.replace("/USDT", ""), mine: pct(mine), hold: pct(hold) }))}</strong></p>
-                <p class="hint">${esc(t(mine >= hold ? "replay.beat" : "replay.lost"))}</p>
+                <p class="hint">${esc(verdict)}</p>
                 <button class="small-btn" id="replay-again">${esc(t("replay.again"))}</button>`;
-            $("#replay-again").onclick = () => replayScreen();
+            $("#replay-again").onclick = () => replayScreen(kind);
         };
         stats();
         every(REPLAY_TICK_MS, () => {
@@ -1188,6 +1206,8 @@
             if (series) series.update(candles[idx]);
             idx += 1;
             stats();
+            if (equity() < floor) finish(); // the loss limit ends a scenario early
+
         });
         window.scrollTo(0, 0);
     }

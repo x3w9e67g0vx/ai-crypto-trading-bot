@@ -1,4 +1,4 @@
-"""Day streak: consecutive UTC days with a trade, a lesson, the daily puzzle or a replay, read from events."""
+"""Day streak: consecutive UTC days with a trade, a lesson, the daily puzzle, a replay or a scenario, read from events."""
 from __future__ import annotations
 
 from sqlalchemy.orm import Session
