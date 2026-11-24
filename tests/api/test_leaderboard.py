@@ -105,4 +105,4 @@ def test_ai_position_why_is_delayed_for_free(client, db):
     pro = next(row for row in client.get("/game/ai", params={"season": "week"}, headers=auth()).json() if row["key"] == "lstm")
     assert pro["positions"][0]["id"] == position.id
     body = client.get(url, headers=auth()).json()
-    assert (body["nickname"], body["probability_up"], body["threshold"]) == ("LSTM", 0.7, 0.55)
+    assert (body["nickname"], body["probability_up"], body["threshold"]) == ("LSTM", 0.7, 0.65)

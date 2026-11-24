@@ -20,7 +20,7 @@ def test_why_long_follows_the_decision(db, quotes):
     assert why["nickname"] == "LSTM"
     assert (why["symbol"], why["side"]) == ("BTC/USDT", "long")
     assert why["probability_up"] == 0.7
-    assert why["threshold"] == 0.55
+    assert why["threshold"] == 0.65
     assert why["trend_filter"] is True
     assert why["trend"] == "up"
     assert why["rsi"] is not None
@@ -39,7 +39,7 @@ def test_why_short_uses_sell_threshold_and_no_filter(db, quotes):
     why = ai_entry_why(db, make_player(db, telegram_id=1), position.id, LATER)
 
     assert why["side"] == "short"
-    assert why["threshold"] == 0.45
+    assert why["threshold"] == 0.35
     assert why["trend"] == "down"  # from the decision snapshot
     assert why["rsi"] is None  # no candles
     assert [step["code"] for step in why["steps"]] == ["signal", "no_trend_filter", "size", "stops"]
@@ -60,7 +60,7 @@ def test_why_falls_back_to_persona_for_old_decisions(db, quotes):
 
     why = ai_entry_why(db, make_player(db, telegram_id=1), position.id, LATER)
 
-    assert (why["threshold"], why["trend_filter"], why["trend"]) == (0.55, True, None)
+    assert (why["threshold"], why["trend_filter"], why["trend"]) == (0.65, True, None)
 
 
 def test_why_hidden_until_free_viewer_sees_position(db, quotes):

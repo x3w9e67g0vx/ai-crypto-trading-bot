@@ -108,7 +108,7 @@ def test_ai_not_in_league_groups(db, quotes):
 def test_decision_keeps_what_the_persona_decided_on(db, quotes):
     [decision] = turn(db, quotes, {"random_forest": BULLISH})
 
-    assert (decision.buy_threshold, decision.sell_threshold, decision.trend_filter) == (0.65, 0.35, True)
+    assert (decision.buy_threshold, decision.sell_threshold, decision.trend_filter) == (0.7, 0.3, True)
     assert (decision.ema_fast, decision.ema_slow) == (101.0, 100.0)
 
 

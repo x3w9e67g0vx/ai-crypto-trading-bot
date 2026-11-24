@@ -22,12 +22,14 @@ class Persona:
     use_trend_filter: bool
 
 
-# Starting values from the spec; tuned during the beta.
+# Thresholds tuned 2026-11-24 on the out-of-sample 5m window, BTC+ETH+SOL summed:
+# LSTM 0.55->0.65 (-0.3% -> +1.1%), RF 0.65->0.70 (-4.6% -> -0.6%),
+# LogReg 0.55->0.65 (-20.3% -> -7.9%). Weak models lose less by trading less.
 PERSONAS = (
-    Persona("lstm", "LSTM", 0.55, 0.45, 0.40, 0.03, 0.06, True),
-    Persona("random_forest", "Random Forest", 0.65, 0.35, 0.15, 0.015, 0.03, True),
-    # The spec gives the "newbie" no SL/TP of its own; it reuses LSTM's.
-    Persona("logistic_regression", "LogReg", 0.55, 0.45, 0.25, 0.03, 0.06, False),
+    Persona("lstm", "LSTM", 0.65, 0.35, 0.40, 0.03, 0.06, True),
+    Persona("random_forest", "Random Forest", 0.70, 0.30, 0.15, 0.015, 0.03, True),
+    # The "newbie": no trend filter by design (with it: -5.6%); SL/TP reuse LSTM's.
+    Persona("logistic_regression", "LogReg", 0.65, 0.35, 0.25, 0.03, 0.06, False),
 )
 
 
