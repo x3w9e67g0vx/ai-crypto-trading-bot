@@ -113,6 +113,13 @@ PUZZLE_MOVE_PCT = 0.5
 PUZZLE_FLAT_PCT = 0.2
 XP_PER_PUZZLE = 20
 
+# "Guess the AI": a bet on the next candle; XP per correct half, capped per UTC day.
+XP_PER_GUESS_HIT = 5
+GUESS_DAILY_XP_CAP = 50
+# Wait this long after the candle closes for its candle row and AI decisions before settling without them.
+GUESS_GRACE_MS = 15 * 60 * 1000
+GUESS_RECENT = 5
+
 # Season quests: the "discipline" quest fails on a trade losing more than this % of the starting balance.
 QUEST_MAX_LOSS_PCT = 2.0
 

@@ -80,3 +80,11 @@ def test_i18n_covers_quality_ranking():
     keys = {"rank.by.return", "rank.by.quality", "rank.quality_note", "rank.quality_hint"}
     for lang in ("ru", "en"):
         assert keys <= set(strings[lang]), lang
+
+
+def test_i18n_covers_guess():
+    strings = _strings()
+    keys = {f"guess.{key}" for key in ("title", "today", "prompt", "send", "placed", "pending", "result", "toast")}
+    keys |= {f"guess.price.{v}" for v in ("up", "down")} | {f"guess.view.{v}" for v in ("bullish", "neutral", "bearish")}
+    for lang in ("ru", "en"):
+        assert keys <= set(strings[lang]), (lang, keys - set(strings[lang]))

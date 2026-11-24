@@ -36,6 +36,7 @@ from app.game.leagues import group_portfolio_ids
 from app.game.lessons import Lesson, get_lesson, get_lessons
 from app.game.models import Badge, Player, Portfolio, Position
 from app.game.players import unlocked_symbols, validate_nickname
+from app.game.guesses import guess_view, make_guess
 from app.game.puzzle import answer_puzzle, puzzle_view
 from app.game.quests import claim_quests
 from app.game.progress import complete_lesson, completed_lessons, level_info
@@ -528,6 +529,37 @@ def post_puzzle(
     xp_awarded = answer_puzzle(db, player, body.choice, now_ms)
     db.commit()
     return {"xp_awarded": xp_awarded, "puzzle": puzzle_view(db, player, now_ms), "player": _player_json(db, player, now_ms)}
+
+
+@router.get("/guess")
+def get_guess(
+    symbol: str,
+    player: Player = Depends(current_player),
+    db: Session = Depends(get_db),
+    now_ms: int = Depends(get_now_ms),
+) -> dict:
+    view = guess_view(db, player, symbol, now_ms)
+    db.commit()
+    return {"guess": view, "player": _player_json(db, player, now_ms)}
+
+
+class GuessRequest(BaseModel):
+    symbol: str
+    price: Literal["up", "down"]
+    view: Literal["bullish", "bearish", "neutral"]
+
+
+@router.post("/guess")
+def post_guess(
+    body: GuessRequest,
+    player: Player = Depends(current_player),
+    db: Session = Depends(get_db),
+    now_ms: int = Depends(get_now_ms),
+) -> dict:
+    make_guess(db, player, body.symbol, body.price, body.view, now_ms)
+    view = guess_view(db, player, body.symbol, now_ms)
+    db.commit()
+    return {"guess": view, "player": _player_json(db, player, now_ms)}
 
 
 def _duel_json(db: Session, player: Player, quotes: QuoteBook, now_ms: int) -> dict:

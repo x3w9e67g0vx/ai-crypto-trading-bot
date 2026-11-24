@@ -550,6 +550,66 @@
         });
     }
 
+    // ---------- guess the AI ----------
+
+    async function refreshGuess(request) {
+        const box = $("#guess");
+        if (!box) return;
+        let body;
+        try {
+            body = await (request ?? api(`/game/guess?symbol=${encodeURIComponent(state.symbol)}`));
+        } catch (error) {
+            if (request) {
+                toast(errorText(error));
+                return refreshGuess();
+            }
+            box.hidden = true; // pairs without AI have nothing to guess
+            return;
+        }
+        box.hidden = false;
+        renderGuess(box, body);
+    }
+
+    function renderGuess(box, body) {
+        const g = body.guess;
+        state.me.player = body.player;
+        if (g.xp_awarded) {
+            haptic("success");
+            toast(t("guess.toast", { xp: g.xp_awarded }));
+        }
+        const mark = (ok) => (ok === null ? "–" : ok ? "✓" : "✗");
+        const recent = g.recent
+            .map((r) => `<li><div class="grow">${esc(r.symbol)} ${clock(r.candle_ts)}
+                <div class="hint">${esc(t("guess.result", { price: mark(r.price_correct), ai: mark(r.ai_correct) }))}</div></div>
+                <span class="num">+${r.xp} XP</span></li>`)
+            .join("");
+        const choice = (name, options) => `<div class="segmented" role="group">
+            ${options.map((value) => `<button data-${name}="${value}" aria-pressed="false">${esc(t(`guess.${name}.${value}`))}</button>`).join("")}
+        </div>`;
+        const form = g.current
+            ? `<p>${esc(t("guess.placed", { price: t(`guess.price.${g.current.price}`), view: t(`guess.view.${g.current.view}`) }))}</p>`
+            : `${choice("price", ["up", "down"])}${choice("view", ["bullish", "neutral", "bearish"])}
+               <button class="primary" id="guess-send" disabled>${esc(t("guess.send"))}</button>`;
+        box.innerHTML = `<h3><span>${esc(t("guess.title"))}</span>
+                <span class="hint">${esc(t("guess.today", { xp: g.xp_today, cap: g.daily_cap }))}</span></h3>
+            <p class="hint">${esc(t("guess.prompt", { symbol: g.symbol, time: clock(g.candle_ts), xp: g.xp_per_hit }))}</p>
+            ${form}
+            ${g.pending ? `<p class="hint">${esc(t("guess.pending", { n: g.pending }))}</p>` : ""}
+            ${recent ? `<ul class="list">${recent}</ul>` : ""}`;
+        if (g.current) return;
+        const picked = {};
+        box.querySelectorAll("[data-price], [data-view]").forEach((button) => {
+            button.onclick = () => {
+                const name = "price" in button.dataset ? "price" : "view";
+                picked[name] = button.dataset[name];
+                box.querySelectorAll(`[data-${name}]`).forEach((b) => b.setAttribute("aria-pressed", String(b === button)));
+                $("#guess-send", box).disabled = !(picked.price && picked.view);
+            };
+        });
+        $("#guess-send", box).onclick = () =>
+            refreshGuess(api("/game/guess", { method: "POST", body: { symbol: g.symbol, ...picked } }));
+    }
+
     async function refreshDuel() {
         const inDuel = state.season === "duel";
         const [ai, friend] = await Promise.all([inDuel ? null : api(`/game/ai?season=${state.season}`), api("/game/duel")]);
@@ -711,6 +771,7 @@
                 <button class="short" id="sell-short"></button>
               </div>
             </section>
+            <section class="level-card" id="guess"></section>
             <section class="level-card" id="quests" ${state.season === "duel" ? "hidden" : ""}></section>
             <h2>${esc(t("positions.open"))}</h2>
             <ul class="list" id="positions"></ul>
@@ -734,11 +795,12 @@
         $("#sell-short").onclick = () => placeOrder("short");
 
         renderSeasonMeta();
-        await Promise.all([refreshQuotes(), refreshTrade(), refreshDuel(), loadChart()]);
+        await Promise.all([refreshQuotes(), refreshTrade(), refreshDuel(), loadChart(), refreshGuess()]);
         renderQuote();
         every(2000, () => refreshQuotes().catch(() => {}));
         every(5000, () => refreshTrade().catch(() => {}));
         every(30000, () => refreshDuel().catch(() => {}));
+        every(30000, () => refreshGuess());
         every(30000, () => renderSeasonMeta());
     }
 

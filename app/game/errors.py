@@ -78,3 +78,7 @@ class DuelBusy(GameError):
 
 class DuelOwn(GameError):
     code = "duel_own"
+
+
+class AlreadyGuessed(GameError):
+    code = "already_guessed"

@@ -345,3 +345,22 @@ class Duel(Base):
     challenger = relationship("Player", foreign_keys=[challenger_id])
     opponent = relationship("Player", foreign_keys=[opponent_id])
     season = relationship("Season")
+
+
+class AiGuess(Base):
+    """A player's bet on the next candle: price direction and the AI majority view; xp set once settled."""
+
+    __tablename__ = "ai_guesses"
+    __table_args__ = (UniqueConstraint("player_id", "symbol", "candle_ts", name="uq_ai_guess"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    player_id = Column(Integer, ForeignKey("players.id"), nullable=False, index=True)
+    symbol = Column(String, nullable=False)
+    candle_ts = Column(BigInteger, nullable=False)  # open time of the guessed candle
+    price = Column(String, nullable=False)  # up | down
+    view = Column(String, nullable=False)  # bullish | bearish | neutral
+    price_correct = Column(Boolean, nullable=True)
+    ai_correct = Column(Boolean, nullable=True)  # null when no AI decided on the candle
+    xp = Column(Integer, nullable=True)
+    created_at = Column(BigInteger, nullable=False)
+    settled_at = Column(BigInteger, nullable=True, index=True)
