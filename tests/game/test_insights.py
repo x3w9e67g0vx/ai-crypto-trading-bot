@@ -1,8 +1,10 @@
+from types import SimpleNamespace
+
 import pytest
 
 from app.core.db.models import Candle
 from app.game.config import AI_VISIBILITY_DELAY_MS
-from app.game.insights import CANDLE_MS, Indicators, indicators_at, order_tips, trade_review
+from app.game.insights import CANDLE_MS, _grade, Indicators, indicators_at, order_tips, trade_review
 from app.game.models import AiDecision, Portfolio
 from app.game.quotes import Quote
 from app.game.trading import close_position, open_position
@@ -152,3 +154,24 @@ def test_review_without_candles(db, player, portfolio, quotes):
     review = trade_review(db, player, position, NOW + 3 * AI_VISIBILITY_DELAY_MS)
     assert review["entry"] is None and review["exit"] is None
     assert review["notes"] == []
+
+
+@pytest.mark.parametrize(
+    ("stop_loss", "pnl", "notes", "grade"),
+    [
+        (80.0, -5.0, ["with_trend", "stopped_out"], "discipline"),
+        (80.0, 5.0, ["with_trend"], "discipline"),
+        (None, 5.0, ["with_trend"], "luck"),
+        (80.0, 5.0, ["against_trend"], "luck"),
+        (80.0, -5.0, ["entry_overbought", "with_trend"], "risk"),
+        (None, -5.0, ["no_stop_loss"], "risk"),
+    ],
+)
+def test_review_grade(stop_loss, pnl, notes, grade):
+    assert _grade(SimpleNamespace(stop_loss=stop_loss, pnl=pnl), notes) == grade
+
+
+def test_review_has_grade(db, player, portfolio, quotes):
+    add_candles(db, rising=True, end_ms=NOW)
+    position = _closed_long(db, portfolio, quotes, bid=90.0)
+    assert trade_review(db, player, position, NOW)["grade"] == "risk"

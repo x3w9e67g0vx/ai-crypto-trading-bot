@@ -481,6 +481,18 @@ dialog h2 {
     padding-left: 20px;
 }
 
+.grade {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--grade) 15%, transparent);
+    color: var(--grade);
+}
+
+.grade-discipline { --grade: var(--long); }
+.grade-luck { --grade: var(--warn); }
+.grade-risk { --grade: var(--short); }
+
 .quiz {
     margin-top: 16px;
     padding: 12px 14px;

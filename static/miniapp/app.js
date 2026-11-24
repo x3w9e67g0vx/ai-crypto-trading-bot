@@ -449,6 +449,7 @@
         await modal(
             `<h2>${esc(t("review.title", { symbol: review.symbol, side: t(`side.${review.side}`) }))}</h2>
              <p class="num ${trend(r.pnl)}">${esc(result)}</p>
+             <p class="grade grade-${review.grade}">${esc(t(`grade.${review.grade}`))}</p>
              <p class="hint">${esc(t("review.prices", { entry: price(r.entry_price), exit: price(r.exit_price) }))}</p>
              <ul class="list">
                <li><div class="grow hint">${esc(t("review.entry"))}</div><span>${esc(indicatorsLine(review.entry))}</span></li>

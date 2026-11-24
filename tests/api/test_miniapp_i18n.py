@@ -50,6 +50,7 @@ def test_i18n_covers_tips_and_notes():
 
     strings = _strings()
     keys = {f"tip.{code}" for code in TIP_LESSONS} | {f"note.{code}" for code in NOTE_CODES}
+    keys |= {f"grade.{grade}" for grade in ("discipline", "luck", "risk")}
     keys |= {f"reason.{reason}" for reason in ("manual", "stop_loss", "take_profit", "season_end")}
     for lang in ("ru", "en"):
         missing = keys - set(strings[lang])

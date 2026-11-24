@@ -138,11 +138,22 @@ def _notes(position: Position, entry: Indicators | None, ai: list[dict]) -> list
     return notes
 
 
+RISKY_NOTES = {"entry_overbought", "entry_oversold", "against_trend"}
+
+
+def _grade(position: Position, notes: list[str]) -> str:
+    """Process over outcome: a clean loss is discipline, a sloppy win is luck."""
+    if position.stop_loss is not None and not RISKY_NOTES & set(notes):
+        return "discipline"
+    return "luck" if position.pnl > 0 else "risk"
+
+
 def trade_review(db: Session, viewer: Player, position: Position, now_ms: int) -> dict:
     """Template review of a closed position: result, indicators at entry and exit, AI opinions."""
     entry = indicators_at(db, position.symbol, position.opened_at)
     exit_ = indicators_at(db, position.symbol, position.closed_at)
     ai = _ai_at_entry(db, viewer, position, now_ms)
+    notes = _notes(position, entry, ai)
     return {
         "position_id": position.id,
         "symbol": position.symbol,
@@ -158,7 +169,8 @@ def trade_review(db: Session, viewer: Player, position: Position, now_ms: int) -
         "entry": asdict(entry) if entry is not None else None,
         "exit": asdict(exit_) if exit_ is not None else None,
         "ai": ai,
-        "notes": _notes(position, entry, ai),
+        "notes": notes,
+        "grade": _grade(position, notes),
     }
 
 
