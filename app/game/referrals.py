@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.game.models import Badge, Player
 from app.game.players import start_player
+from app.game.shop import REFERRAL_PRO_DAYS, extend_pro
 
 REF_RE = re.compile(r"ref_(\d+)")
 
@@ -21,8 +22,8 @@ def ref_link(bot_username: str, player: Player) -> str:
 
 
 def apply_referral(db: Session, player: Player, referrer_id: int, now_ms: int) -> bool:
-    """Record who invited the player. Pro days for both come with payments;
-    on the beta the inviter gets the one-time `recruiter` badge."""
+    """Record who invited the player: both get REFERRAL_PRO_DAYS of Pro,
+    the inviter also the one-time `recruiter` badge."""
     if player.referred_by_id is not None or referrer_id == player.id:
         return False
     referrer = db.get(Player, referrer_id)
@@ -30,6 +31,8 @@ def apply_referral(db: Session, player: Player, referrer_id: int, now_ms: int) -
         return False
 
     player.referred_by_id = referrer.id
+    extend_pro(player, REFERRAL_PRO_DAYS, now_ms)
+    extend_pro(referrer, REFERRAL_PRO_DAYS, now_ms)
     has_badge = db.query(Badge.id).filter_by(player_id=referrer.id, code="recruiter").first()
     if has_badge is None:
         db.add(Badge(player_id=referrer.id, code="recruiter", season_id=None, created_at=now_ms))

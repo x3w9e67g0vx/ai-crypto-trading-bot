@@ -1,4 +1,4 @@
-"""Player commands. Six work in private chats only; /league is the group command.
+"""Player commands. Seven work in private chats only; /league is the group command.
 
 Dependencies come from the dispatcher's workflow data: session_factory, quotes,
 clock (() -> ms), bot_username, miniapp_url.
@@ -12,7 +12,7 @@ import time
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandObject, CommandStart
-from aiogram.types import CallbackQuery, Message, User
+from aiogram.types import CallbackQuery, LabeledPrice, Message, PreCheckoutQuery, User
 
 from app.game.chat_leagues import ensure_chat_league, join_chat_league
 from app.game.models import ChatLeague
@@ -20,6 +20,7 @@ from app.game.players import start_player
 from app.game.duels import accept_duel, parse_duel
 from app.game.errors import DuelBusy, DuelNotFound, DuelOwn
 from app.game.referrals import apply_referral, register_start
+from app.game.shop import ITEMS, check_purchase, grant
 from app.i18n.strings import normalize_lang, t
 from app.telegram import views
 
@@ -192,9 +193,64 @@ async def league_callback(callback: CallbackQuery, session_factory, quotes, cloc
         await _edit(callback.message, text, keyboard)
 
 
+async def shop_command(message: Message, session_factory, clock) -> None:
+    with session_factory() as db:
+        player, _ = start_player(db, tg_user(message.from_user), clock())
+        if player.is_banned:
+            await message.answer(t("banned", lang=player.language))
+            return
+        text, keyboard = views.shop_view(player, clock())
+    await message.answer(text, reply_markup=keyboard)
+
+
+async def buy_callback(callback: CallbackQuery, session_factory, clock) -> None:
+    item = ITEMS.get(callback.data.removeprefix("buy:"))
+    with session_factory() as db:
+        player, _ = start_player(db, tg_user(callback.from_user), clock())
+        lang = player.language
+    if item is None or item.stars is None or callback.message is None or player.is_banned:
+        await callback.answer()
+        return
+    await callback.answer()
+    title = t(f"item.{item.code}", lang=lang)
+    # Stars invoices: currency XTR, no provider token.
+    await callback.message.answer_invoice(
+        title=title,
+        description=title,
+        payload=item.code,
+        currency="XTR",
+        prices=[LabeledPrice(label=title, amount=item.stars)],
+    )
+
+
+async def pre_checkout(query: PreCheckoutQuery, session_factory, clock) -> None:
+    with session_factory() as db:
+        player, _ = start_player(db, tg_user(query.from_user), clock())
+        ok = not player.is_banned and check_purchase(
+            db, player, query.invoice_payload, query.currency, query.total_amount
+        )
+        lang = player.language
+    await query.answer(ok=ok, error_message=None if ok else t("shop.declined", lang=lang))
+
+
+async def paid(message: Message, session_factory, clock) -> None:
+    payment = message.successful_payment
+    with session_factory() as db:
+        player, _ = start_player(db, tg_user(message.from_user), clock())
+        grant(db, player, payment.invoice_payload, payment.total_amount, payment.telegram_payment_charge_id, clock())
+        db.commit()
+        text = t("shop.thanks", lang=player.language, item=t(f"item.{payment.invoice_payload}", lang=player.language))
+    await message.answer(text)
+
+
 def create_router() -> Router:
     router = Router(name="game")
+    router.message.register(shop_command, CommandStart(deep_link=True, magic=F.args == "pro"), PRIVATE)
     router.message.register(start, CommandStart(), PRIVATE)
+    router.message.register(shop_command, Command("pro"), PRIVATE)
+    router.callback_query.register(buy_callback, F.data.startswith("buy:"))
+    router.pre_checkout_query.register(pre_checkout)
+    router.message.register(paid, F.successful_payment)
     router.message.register(play, Command("play"), PRIVATE)
     router.message.register(rank, Command("rank"), PRIVATE)
     router.message.register(learn, Command("learn"), PRIVATE)

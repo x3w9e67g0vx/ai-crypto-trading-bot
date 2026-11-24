@@ -44,6 +44,26 @@ STRINGS: dict[str, dict[str, str]] = {
         "duel.not_found": "Этот вызов уже не действует: его приняли, отменили или прошли сутки.",
         "duel.busy": "У тебя уже идёт дуэль — доиграй её сначала.",
         "duel.own": "Это твой вызов — отправь ссылку другу.",
+        "shop.title": (
+            "⭐ <b>VEYDRANOX Pro</b>\n"
+            "• позиции ИИ сразу, без задержки в 1 час\n"
+            "• разборы сделок от ИИ-тренера\n"
+            "• Pro-косметика: золотая рамка, мятный ник, ИИ-роботы\n"
+            "На торговлю не влияет: денег и преимуществ в игре не даёт.\n\n"
+            "{status}\n\nКосметика за ⭐ — навсегда:"
+        ),
+        "shop.pro_until": "Pro активен до {until} UTC.",
+        "shop.no_pro": "Pro не активен.",
+        "shop.thanks": "Спасибо! «{item}» уже твой.",
+        "shop.declined": "Эту покупку нельзя оформить: товар уже куплен или цена изменилась.",
+        "shop.unavailable": "Покупки сейчас недоступны, попробуй позже.",
+        "item.pro_month": "Pro на 30 дней",
+        "item.pro_year": "Pro на год",
+        "item.frame_neon": "Неоновая рамка",
+        "item.frame_fire": "Огненная рамка",
+        "item.color_violet": "Фиолетовый ник",
+        "item.color_amber": "Янтарный ник",
+        "item.skin_beasts": "ИИ-звери",
         "duel.share": "⚔️ Вызываю на дуэль трейдеров: 24 часа, по 10 000 $ виртуальных. Кто заработает больше?",
         "tier.bronze": "Бронза",
         "tier.silver": "Серебро",
@@ -187,6 +207,26 @@ STRINGS: dict[str, dict[str, str]] = {
         "duel.not_found": "This challenge is no longer valid: accepted, cancelled or older than a day.",
         "duel.busy": "You already have a duel running — finish it first.",
         "duel.own": "That's your own challenge — send the link to a friend.",
+        "shop.title": (
+            "⭐ <b>VEYDRANOX Pro</b>\n"
+            "• AI positions live, no 1-hour delay\n"
+            "• trade reviews by the AI coach\n"
+            "• Pro cosmetics: gold frame, mint nickname, AI robots\n"
+            "No effect on trading: gives no money or edge in the game.\n\n"
+            "{status}\n\nCosmetics for ⭐ — yours forever:"
+        ),
+        "shop.pro_until": "Pro is active until {until} UTC.",
+        "shop.no_pro": "Pro is not active.",
+        "shop.thanks": "Thank you! “{item}” is yours.",
+        "shop.declined": "This purchase can't go through: already owned or the price changed.",
+        "shop.unavailable": "Purchases are unavailable right now, try later.",
+        "item.pro_month": "Pro for 30 days",
+        "item.pro_year": "Pro for a year",
+        "item.frame_neon": "Neon frame",
+        "item.frame_fire": "Fire frame",
+        "item.color_violet": "Violet nickname",
+        "item.color_amber": "Amber nickname",
+        "item.skin_beasts": "AI beasts",
         "duel.share": "⚔️ I challenge you to a trading duel: 24 hours, $10,000 virtual each. Who makes more?",
         "tier.bronze": "Bronze",
         "tier.silver": "Silver",

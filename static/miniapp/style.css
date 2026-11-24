@@ -587,3 +587,12 @@ dialog h2 {
 .streak.at-risk {
     color: var(--warn, #d98a1f);
 }
+
+/* Cosmetics: frames on leaderboard rows, nickname colors. Decoration only. */
+.list li.frame-frame_gold { box-shadow: inset 0 0 0 2px #d4a72c; border-radius: 10px; }
+.list li.frame-frame_neon { box-shadow: inset 0 0 0 2px #22d3ee, 0 0 8px #22d3ee88; border-radius: 10px; }
+.list li.frame-frame_fire { box-shadow: inset 0 0 0 2px #f97316, 0 0 8px #ef444488; border-radius: 10px; }
+.nick.nick-color_mint { color: #10b981; }
+.nick.nick-color_violet { color: #8b5cf6; }
+.nick.nick-color_amber { color: #f59e0b; }
+.llm-text { white-space: pre-wrap; line-height: 1.45; }

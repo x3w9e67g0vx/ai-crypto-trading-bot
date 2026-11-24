@@ -82,3 +82,15 @@ class DuelOwn(GameError):
 
 class AlreadyGuessed(GameError):
     code = "already_guessed"
+
+
+class CosmeticLocked(GameError):
+    code = "cosmetic_locked"
+
+
+class ProRequired(GameError):
+    code = "pro_required"
+
+
+class LlmUnavailable(GameError):
+    code = "llm_unavailable"

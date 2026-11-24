@@ -32,6 +32,8 @@ from app.game.duels import cancel_duel, create_duel, duel_link, duel_portfolio, 
 from app.game.errors import DuelNotFound, LessonNotFound, PositionExists, PositionNotFound, SymbolLocked, UnknownSymbol
 from app.game.insights import ai_entry_why, indicators_at, order_tips, trade_review
 from app.game.leaderboard import standings
+from app.game.llm_review import llm_review
+from app.game.shop import SLOTS, equip, wardrobe, worn
 from app.game.leagues import group_portfolio_ids
 from app.game.lessons import Lesson, get_lesson, get_lessons
 from app.game.models import Badge, Player, Portfolio, Position
@@ -87,6 +89,10 @@ def _player_json(db: Session, player: Player, now_ms: int) -> dict:
         "next_level_xp": level.next_level_xp,
         "next_unlocks": list(level.next_unlocks),
         "is_pro": is_pro(player, now_ms),
+        "pro_until": player.is_pro_until if is_pro(player, now_ms) else None,
+        "cosmetics": worn(player, now_ms),
+        "wardrobe": wardrobe(db, player, now_ms),
+        "shop_link": f"https://t.me/{settings.BOT_USERNAME}?start=pro" if settings.BOT_USERNAME else None,
         "needs_nickname": not player.nickname_set,
         "badges": [{"code": badge.code, "season_id": badge.season_id} for badge in badges],
     }
@@ -126,6 +132,10 @@ def _me_json(db: Session, player: Player, quotes: QuoteBook, now_ms: int) -> dic
 class ProfileUpdate(BaseModel):
     nickname: str | None = None
     language: Literal["ru", "en"] | None = None
+    # Sent as null: take the cosmetic off; left out: unchanged.
+    frame: str | None = None
+    nick_color: str | None = None
+    ai_skin: str | None = None
 
 
 @router.get("/me")
@@ -152,6 +162,9 @@ def update_me(
         player.nickname_set = True
     if update.language is not None:
         player.language = update.language
+    for slot in SLOTS:
+        if slot in update.model_fields_set:
+            equip(db, player, slot, getattr(update, slot), now_ms)
     db.commit()
     return _me_json(db, player, quotes, now_ms)
 
@@ -331,6 +344,25 @@ def review_my_position(
     return trade_review(db, player, position, now_ms)
 
 
+@router.post("/positions/{position_id}/review/llm")
+def llm_review_my_position(
+    position_id: int,
+    player: Player = Depends(current_player),
+    db: Session = Depends(get_db),
+    now_ms: int = Depends(get_now_ms),
+) -> dict:
+    """Pro: coach text on the player's own closed position, cached after the first call."""
+    position = (
+        db.query(Position)
+        .join(Portfolio, Position.portfolio_id == Portfolio.id)
+        .filter(Position.id == position_id, Portfolio.player_id == player.id, Position.closed_at.isnot(None))
+        .one_or_none()
+    )
+    if position is None:
+        raise PositionNotFound(position_id)
+    return {"position_id": position.id, "text": llm_review(db, player, position, now_ms)}
+
+
 @router.get("/positions")
 def list_positions(
     season: PlaySeason,
@@ -366,6 +398,7 @@ def get_leaderboard(
     db.commit()
     group, portfolio_ids = group_portfolio_ids(db, portfolio)
     table = standings(db, portfolio.season, quotes, now_ms, portfolio_ids=portfolio_ids)
+    players = {p.id: p for p in db.query(Player).filter(Player.id.in_([row.player_id for row in table]))}
 
     rows = [
         {
@@ -379,6 +412,7 @@ def get_leaderboard(
             "stop_share": row.stop_share,
             "quality": row.quality,
             "is_me": row.portfolio_id == portfolio.id,
+            **{slot: code for slot, code in worn(players[row.player_id], now_ms).items() if slot != "ai_skin"},
         }
         for row in table
     ]

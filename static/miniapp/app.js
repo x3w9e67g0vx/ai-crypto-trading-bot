@@ -459,10 +459,24 @@
              <h3>${esc(t("review.ai"))}</h3>
              <ul class="list">${ai}</ul>
              ${notes ? `<h3>${esc(t("review.notes"))}</h3><ul class="notes">${notes}</ul>` : ""}
+             <div id="llm-box"><button class="small-btn" id="llm-review">${esc(t(state.me.player.is_pro ? "review.llm" : "review.llm_pro"))}</button></div>
              <button class="primary" id="review-close">${esc(t("review.close"))}</button>`,
             (dialog, done) => {
                 dialog.addEventListener("cancel", () => done(), { once: true });
                 $("#review-close", dialog).onclick = () => done();
+                $("#llm-review", dialog).onclick = async (event) => {
+                    if (!state.me.player.is_pro) return openShop();
+                    event.target.disabled = true;
+                    event.target.textContent = t("review.llm_loading");
+                    try {
+                        const body = await api(`/game/positions/${positionId}/review/llm`, { method: "POST" });
+                        $("#llm-box", dialog).innerHTML = `<h3>${esc(t("review.llm_title"))}</h3><p class="llm-text">${esc(body.text)}</p>`;
+                    } catch (error) {
+                        event.target.disabled = false;
+                        event.target.textContent = t("review.llm");
+                        toast(errorText(error));
+                    }
+                };
             },
         );
     }
@@ -825,9 +839,9 @@
                           note = t("rank.quality_note", { dd: pct(-row.drawdown_pct), stops });
                       }
                       const score = byQuality ? row.quality : row.return_pct;
-                      return `<li class="${row.is_ai ? "ai-row" : ""} ${row.is_me ? "me" : ""}">
+                      return `<li class="${row.is_ai ? "ai-row" : ""} ${row.is_me ? "me" : ""} ${row.frame ? `frame-${row.frame}` : ""}">
                         <span class="rank-cell num">${row.rank ?? "–"}</span>
-                        <div class="grow"><div class="nick">${esc(row.nickname)}</div><div class="hint">${esc(note)}</div></div>
+                        <div class="grow"><div class="nick ${row.nick_color ? `nick-${row.nick_color}` : ""}">${esc(row.nickname)}</div><div class="hint">${esc(note)}</div></div>
                         <span class="num ${trend(score)}">${pct(score)}</span>
                       </li>`;
                   })
@@ -850,6 +864,16 @@
     }
 
     // ---------- AI ----------
+
+    const AI_SKINS = {
+        skin_robots: { lstm: "🤖", random_forest: "🦾", logistic_regression: "📟" },
+        skin_beasts: { lstm: "🦉", random_forest: "🦊", logistic_regression: "🐹" },
+    };
+
+    function aiAvatar(key) {
+        const emoji = (AI_SKINS[state.me?.player.cosmetics.ai_skin] || {})[key];
+        return emoji ? `${emoji} ` : "";
+    }
 
     async function aiScreen() {
         const personas = await api(`/game/ai?season=${state.season}`);
@@ -876,7 +900,7 @@
                           .join("")
                     : `<li class="hint">${esc(t("ai.no_decisions"))}</li>`;
                 return `<section class="persona">
-                    <h3><span>${esc(row.nickname)}</span><span class="num ${trend(row.return_pct)}">${pct(row.return_pct)}</span></h3>
+                    <h3><span>${aiAvatar(row.key)}${esc(row.nickname)}</span><span class="num ${trend(row.return_pct)}">${pct(row.return_pct)}</span></h3>
                     <p class="hint">${esc(t(`ai.persona.${row.key}`))}</p>
                     <h2>${esc(t("ai.positions"))}</h2><ul class="list">${positions}</ul>
                     <h2>${esc(t("ai.decisions"))}</h2><ul class="list">${decisions}</ul>
@@ -1262,6 +1286,39 @@
 
     // ---------- profile ----------
 
+    function openShop() {
+        const link = state.me.player.shop_link;
+        if (link) tg.openTelegramLink(link);
+        else toast(t("errors.shop_unavailable"));
+    }
+
+    function proCard(player) {
+        const status = player.is_pro
+            ? t("pro.active", { date: new Date(player.pro_until).toLocaleDateString() })
+            : t("pro.inactive");
+        const slots = ["frame", "nick_color", "ai_skin"]
+            .map((slot) => {
+                const options = player.wardrobe
+                    .filter((item) => item.slot === slot)
+                    .map((item) => {
+                        const label = item.available
+                            ? t(`item.${item.code}`)
+                            : `${t(`item.${item.code}`)} · ${item.stars ? `${item.stars} ⭐` : "Pro"}`;
+                        const selected = player.cosmetics[slot] === item.code ? "selected" : "";
+                        return `<option value="${item.code}" ${item.available ? "" : "disabled"} ${selected}>${esc(label)}</option>`;
+                    })
+                    .join("");
+                return `<li><div class="grow hint">${esc(t(`slot.${slot}`))}</div>
+                    <select data-slot="${slot}"><option value="">${esc(t("cosmetic.none"))}</option>${options}</select></li>`;
+            })
+            .join("");
+        return `<h2>${esc(t("pro.title"))}</h2>
+            <p class="hint">${esc(status)}</p>
+            <button class="primary" id="open-shop">${esc(t("pro.buy"))}</button>
+            <h2>${esc(t("cosmetics.title"))}</h2>
+            <ul class="list">${slots}</ul>`;
+    }
+
     async function profileScreen() {
         await refreshMe();
         const player = state.me.player;
@@ -1281,6 +1338,7 @@
               <li><div class="grow hint">${esc(t("profile.xp"))}</div><span class="num">${player.xp}</span></li>
             </ul>
             ${levelCard(player)}
+            ${proCard(player)}
             <h2>${esc(t("share.title"))}</h2>
             ${seasonSwitch()}
             <p class="hint">${esc(t("share.hint"))}</p>
@@ -1289,6 +1347,18 @@
             <ul class="list">${badges}</ul>`;
         bindSeasonSwitch();
         $("#share").onclick = share;
+        $("#open-shop").onclick = openShop;
+        screen.querySelectorAll("[data-slot]").forEach((select) => {
+            select.onchange = async () => {
+                try {
+                    state.me = await api("/game/me", { method: "PATCH", body: { [select.dataset.slot]: select.value || null } });
+                    toast(t("saved"));
+                } catch (error) {
+                    toast(errorText(error));
+                }
+                go("profile");
+            };
+        });
         $("#change-nick").onclick = async () => {
             if (await nicknameModal({ required: false })) {
                 toast(t("saved"));

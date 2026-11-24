@@ -30,6 +30,7 @@ PRIVATE_COMMANDS = {
         ("play", "Открыть игру"),
         ("rank", "Мои места в сезонах"),
         ("learn", "Уроки"),
+        ("pro", "Pro и косметика за ⭐"),
         ("settings", "Уведомления и язык"),
         ("help", "Справка"),
     ],
@@ -38,6 +39,7 @@ PRIVATE_COMMANDS = {
         ("play", "Open the game"),
         ("rank", "My season places"),
         ("learn", "Lessons"),
+        ("pro", "Pro and cosmetics for ⭐"),
         ("settings", "Notifications and language"),
         ("help", "Help"),
     ],
@@ -68,7 +70,7 @@ def build_dispatcher(
 
 
 async def set_commands(bot: Bot) -> None:
-    """Command menus: six in private chats, /league in groups; /admin stays hidden."""
+    """Command menus: seven in private chats, /league in groups; /admin stays hidden."""
     for scope, commands in ((BotCommandScopeAllPrivateChats(), PRIVATE_COMMANDS), (BotCommandScopeAllGroupChats(), GROUP_COMMANDS)):
         for lang, items in commands.items():
             menu = [BotCommand(command=name, description=description) for name, description in items]

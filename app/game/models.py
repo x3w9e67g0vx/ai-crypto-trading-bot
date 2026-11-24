@@ -35,6 +35,10 @@ class Player(Base):
     is_banned = Column(Boolean, nullable=False, default=False)
     is_pro_until = Column(BigInteger, nullable=True)
     referred_by_id = Column(Integer, ForeignKey("players.id"), nullable=True)
+    # Equipped cosmetics: item codes from app.game.shop.ITEMS.
+    frame = Column(String, nullable=True)
+    nick_color = Column(String, nullable=True)
+    ai_skin = Column(String, nullable=True)
 
     # Bot notifications, each one can be switched off in /settings.
     notify_overtaken = Column(Boolean, nullable=False, default=True, server_default=text("true"))
@@ -364,3 +368,29 @@ class AiGuess(Base):
     xp = Column(Integer, nullable=True)
     created_at = Column(BigInteger, nullable=False)
     settled_at = Column(BigInteger, nullable=True, index=True)
+
+
+class Payment(Base):
+    """A Telegram Stars purchase; the charge id makes a redelivered update a no-op."""
+
+    __tablename__ = "payments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    player_id = Column(Integer, ForeignKey("players.id"), nullable=False, index=True)
+    item = Column(String, nullable=False)
+    stars = Column(Integer, nullable=False)
+    charge_id = Column(String, nullable=False, unique=True)
+    created_at = Column(BigInteger, nullable=False)
+
+
+class LlmReview(Base):
+    """Cached LLM text for a closed position, one per language."""
+
+    __tablename__ = "llm_reviews"
+    __table_args__ = (UniqueConstraint("position_id", "language", name="uq_llm_review"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    position_id = Column(Integer, ForeignKey("positions.id"), nullable=False, index=True)
+    language = Column(String, nullable=False)
+    text = Column(String, nullable=False)
+    created_at = Column(BigInteger, nullable=False)

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import time
 from html import escape
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from sqlalchemy.orm import Session
 
+from app.game.ai_view import is_pro
 from app.game.chat_leagues import chat_league_table
 from app.game.config import XP_PER_LESSON, XP_PER_TRADE, SeasonKind
 from app.game.leaderboard import standings
@@ -17,6 +19,7 @@ from app.game.quotes import QuoteBook
 from app.game.progress import completed_lessons, level_info
 from app.game.referrals import ref_link
 from app.game.seasons import current_portfolio
+from app.game.shop import FOR_SALE
 from app.i18n.strings import t
 
 NOTIFY_FLAGS = ("notify_overtaken", "notify_ai_open", "notify_season_end", "notify_streak")
@@ -130,3 +133,18 @@ def league_view(db: Session, league: ChatLeague, quotes: QuoteBook, now_ms: int,
         ]
     )
     return "\n".join(lines), keyboard
+
+
+def shop_view(player: Player, now_ms: int) -> Screen:
+    """Pro perks and status; one button per item for sale, each opens a Stars invoice."""
+    lang = player.language
+    if is_pro(player, now_ms):
+        until = time.strftime("%Y-%m-%d %H:%M", time.gmtime(player.is_pro_until / 1000))
+        status = t("shop.pro_until", lang=lang, until=until)
+    else:
+        status = t("shop.no_pro", lang=lang)
+    buttons = [
+        [InlineKeyboardButton(text=f"{t(f'item.{item.code}', lang=lang)} — {item.stars} ⭐", callback_data=f"buy:{item.code}")]
+        for item in FOR_SALE
+    ]
+    return t("shop.title", lang=lang, status=status), InlineKeyboardMarkup(inline_keyboard=buttons)
