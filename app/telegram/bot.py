@@ -14,6 +14,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.client.session.middlewares.base import BaseRequestMiddleware
+from aiogram.client.telegram import PRODUCTION, TelegramAPIServer
 from aiogram.exceptions import TelegramAPIError, TelegramNetworkError, TelegramRetryAfter
 from aiogram.types import BotCommand, BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats, User
 
@@ -104,7 +105,10 @@ class RetryAfterGate(BaseRequestMiddleware):
 def make_bot() -> Bot:
     # aiohttp ignores HTTPS_PROXY, so pass it explicitly when Telegram is reachable only through a proxy.
     proxy = os.getenv("TELEGRAM_PROXY") or os.getenv("HTTPS_PROXY") or os.getenv("https_proxy")
-    session = AiohttpSession(proxy=proxy) if proxy else AiohttpSession()
+    # TELEGRAM_API_URL points at a local telegram-bot-api server (compose profile `local-bot-api`).
+    local = os.getenv("TELEGRAM_API_URL")
+    api = TelegramAPIServer.from_base(local, is_local=True) if local else PRODUCTION
+    session = AiohttpSession(proxy=proxy, api=api) if proxy else AiohttpSession(api=api)
     session.middleware(RetryAfterGate())
     return Bot(token=settings.TELEGRAM_BOT_TOKEN, session=session, default=DefaultBotProperties(parse_mode="HTML"))
 

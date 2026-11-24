@@ -115,8 +115,17 @@ def test_main_closes_session_when_startup_fails(monkeypatch):
 
 def test_make_bot_has_gate(monkeypatch):
     monkeypatch.setattr(bot_module.settings, "TELEGRAM_BOT_TOKEN", TOKEN)
-    for var in ("TELEGRAM_PROXY", "HTTPS_PROXY", "https_proxy"):
+    for var in ("TELEGRAM_PROXY", "HTTPS_PROXY", "https_proxy", "TELEGRAM_API_URL"):
         monkeypatch.delenv(var, raising=False)
     bot = bot_module.make_bot()
     assert any(isinstance(m, RetryAfterGate) for m in bot.session.middleware)
+    asyncio.run(bot.session.close())
+
+
+def test_make_bot_uses_local_api_server(monkeypatch):
+    monkeypatch.setattr(bot_module.settings, "TELEGRAM_BOT_TOKEN", TOKEN)
+    monkeypatch.setenv("TELEGRAM_API_URL", "http://telegram-bot-api:8081")
+    bot = bot_module.make_bot()
+    assert bot.session.api.api_url(TOKEN, "getMe") == f"http://telegram-bot-api:8081/bot{TOKEN}/getMe"
+    assert bot.session.api.is_local
     asyncio.run(bot.session.close())

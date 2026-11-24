@@ -73,6 +73,18 @@ services:
       db:
         condition: service_healthy
 
+  # Local Bot API server: `docker compose --profile local-bot-api up -d telegram-bot-api`,
+  # then TELEGRAM_API_URL=http://telegram-bot-api:8081 in .env (needs TELEGRAM_API_ID/HASH from my.telegram.org).
+  telegram-bot-api:
+    profiles: [local-bot-api]
+    image: aiogram/telegram-bot-api:latest
+    restart: unless-stopped
+    environment:
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID:-}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH:-}
+    volumes:
+      - telegram_bot_api_data:/var/lib/telegram-bot-api
+
   ngrok:
     profiles: [ngrok]
     image: ngrok/ngrok:latest
@@ -93,3 +105,4 @@ services:
 
 volumes:
   postgres_data:
+  telegram_bot_api_data:
