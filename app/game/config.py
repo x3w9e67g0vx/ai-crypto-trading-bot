@@ -18,8 +18,12 @@ PRIZE_MIN_ACCOUNT_AGE_DAYS = 3
 
 STARTER_SYMBOLS = ("BTC/USDT", "ETH/USDT", "SOL/USDT")
 
-# Top-20 Binance USDT pairs by volume. Fixed on purpose: pairs must not
-# disappear mid-season, so this list is updated by hand between seasons.
+# Pairs open to Pro players at any level; the AI does not trade them.
+PRO_SYMBOLS = ("XAUT/USDT", "WIF/USDT", "BONK/USDT", "TRUMP/USDT")
+
+# Top Binance USDT pairs by volume that Bybit (the fallback feed) also lists.
+# Fixed on purpose: pairs must not disappear mid-season, so this list is
+# updated by hand between seasons.
 GAME_SYMBOLS = STARTER_SYMBOLS + (
     "BNB/USDT",
     "XRP/USDT",
@@ -28,7 +32,7 @@ GAME_SYMBOLS = STARTER_SYMBOLS + (
     "TRX/USDT",
     "AVAX/USDT",
     "LINK/USDT",
-    "TON/USDT",
+    "AAVE/USDT",
     "SUI/USDT",
     "DOT/USDT",
     "LTC/USDT",
@@ -38,7 +42,17 @@ GAME_SYMBOLS = STARTER_SYMBOLS + (
     "PEPE/USDT",
     "SHIB/USDT",
     "UNI/USDT",
-)
+    "HYPE/USDT",
+    "ENA/USDT",
+    "ARB/USDT",
+    "OP/USDT",
+    "WLD/USDT",
+    "FET/USDT",
+    "INJ/USDT",
+    "SEI/USDT",
+    "RENDER/USDT",
+    "HBAR/USDT",
+) + PRO_SYMBOLS
 
 # AI personas trade the starter pairs on closed candles of the timeframe
 # their models were trained on.
@@ -74,19 +88,24 @@ AI_OPEN_LOOKBACK_MS = 10 * 60 * 1000
 
 XP_PER_LESSON = 50
 XP_PER_TRADE = 10
-# XP needed to reach level 1, 2, ... 10.
-LEVEL_XP = (0, 100, 250, 450, 700, 1000, 1400, 1900, 2500, 3200)
+# XP needed to reach level 1, 2, ... 15.
+LEVEL_XP = (0, 100, 250, 450, 700, 1000, 1400, 1900, 2500, 3200, 4000, 4900, 5900, 7000, 8200)
 # Pairs opened on reaching a level; starter pairs are open from level 1.
 PAIR_UNLOCKS = {
     2: ("BNB/USDT", "XRP/USDT"),
     3: ("DOGE/USDT", "ADA/USDT"),
     4: ("TRX/USDT", "AVAX/USDT"),
-    5: ("LINK/USDT", "TON/USDT"),
+    5: ("LINK/USDT", "AAVE/USDT"),
     6: ("SUI/USDT", "DOT/USDT"),
     7: ("LTC/USDT", "BCH/USDT"),
     8: ("NEAR/USDT", "APT/USDT"),
     9: ("PEPE/USDT", "SHIB/USDT"),
     10: ("UNI/USDT",),
+    11: ("HYPE/USDT", "ENA/USDT"),
+    12: ("ARB/USDT", "OP/USDT"),
+    13: ("WLD/USDT", "FET/USDT"),
+    14: ("INJ/USDT", "SEI/USDT"),
+    15: ("RENDER/USDT", "HBAR/USDT"),
 }
 
 # Micro lessons and trade reviews read indicators from closed chart candles.

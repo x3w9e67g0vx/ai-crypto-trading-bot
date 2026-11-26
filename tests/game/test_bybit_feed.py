@@ -26,7 +26,7 @@ def message(*items, topic="kline.5.BTCUSDT"):
 
 def test_subscribe_in_chunks_of_ten():
     messages = subscribe_messages(GAME_SYMBOLS)
-    assert [len(m["args"]) for m in messages] == [10, 10]
+    assert [len(m["args"]) for m in messages] == [10, 10, 10, 4]
     assert all(m["op"] == "subscribe" for m in messages)
     assert messages[0]["args"][0] == "kline.5.BTCUSDT"
     assert sum((m["args"] for m in messages), []) == [f"kline.5.{s.replace('/', '')}" for s in GAME_SYMBOLS]

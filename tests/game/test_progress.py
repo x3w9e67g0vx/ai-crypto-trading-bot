@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from app.game.config import GAME_SYMBOLS, LEVEL_XP, PAIR_UNLOCKS, STARTER_SYMBOLS, XP_PER_TRADE
+from app.game.config import GAME_SYMBOLS, LEVEL_XP, PAIR_UNLOCKS, PRO_SYMBOLS, STARTER_SYMBOLS, XP_PER_TRADE
 from app.game.models import LessonProgress, Portfolio
 from app.game.players import unlocked_symbols
 from app.game.progress import level_for, level_info
@@ -14,15 +14,16 @@ def test_level_thresholds():
     assert level_for(99) == 1
     assert level_for(100) == 2
     assert level_for(3200) == 10
-    assert level_for(10**6) == 10
+    assert level_for(8200) == 15
+    assert level_for(10**6) == 15
 
 
 def test_level_info():
     info = level_info(120)
     assert (info.level, info.level_xp, info.next_level_xp) == (2, 100, 250)
     assert info.next_unlocks == ("DOGE/USDT", "ADA/USDT")
-    top = level_info(5000)
-    assert (top.level, top.next_level_xp, top.next_unlocks) == (10, None, ())
+    top = level_info(10**6)
+    assert (top.level, top.next_level_xp, top.next_unlocks) == (15, None, ())
 
 
 def test_unlocks_by_level(db):
@@ -34,9 +35,9 @@ def test_unlocks_by_level(db):
 
 def test_pair_unlocks_cover_game_symbols():
     unlocked = [symbol for level in sorted(PAIR_UNLOCKS) for symbol in PAIR_UNLOCKS[level]]
-    assert sorted(PAIR_UNLOCKS) == list(range(2, 11))
+    assert sorted(PAIR_UNLOCKS) == list(range(2, 16))
     assert len(unlocked) == len(set(unlocked))
-    assert set(unlocked) == set(GAME_SYMBOLS) - set(STARTER_SYMBOLS)
+    assert set(unlocked) == set(GAME_SYMBOLS) - set(STARTER_SYMBOLS) - set(PRO_SYMBOLS)
 
 
 def _open(db, quotes, **player_kw):
