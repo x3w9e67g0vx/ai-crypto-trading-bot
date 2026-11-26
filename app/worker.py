@@ -25,6 +25,10 @@ logger = logging.getLogger(__name__)
 
 # How far back to fetch candles for a pair with none stored yet.
 CANDLE_HISTORY_DAYS = int(os.getenv("CANDLE_HISTORY_DAYS", "30"))
+# Exit (Docker restarts us) when Binance has been silent this long: on 2026-11-26
+# the container lost DNS and the feeds never recovered on their own.
+# shortcut: a real Binance outage also restarts us every 5 min (Bybit candles pause briefly), fine until outages get long.
+WORKER_STALE_EXIT_MS = 5 * 60 * 1000
 
 
 def _now_ms() -> int:
@@ -34,6 +38,16 @@ def _now_ms() -> int:
 def binance_healthy(quotes: QuoteBook, now_ms: int) -> bool:
     last = quotes.last_update_ms()
     return last is not None and now_ms - last <= STALE_AFTER_MS
+
+
+async def watch_quotes(quotes: QuoteBook, now=_now_ms, max_age_ms: int = WORKER_STALE_EXIT_MS, check_every_s: float = 30) -> None:
+    """Returns once no Binance quote is newer than max_age_ms (counted from start if none came)."""
+    started = now()
+    while True:
+        await asyncio.sleep(check_every_s)
+        last = max(quotes.last_update_ms() or started, started)
+        if now() - last > max_age_ms:
+            return
 
 
 def _store(session_factory, candle: ClosedCandle, source: str) -> bool:
@@ -103,6 +117,12 @@ async def main() -> None:
         asyncio.create_task(run_quote_sync(SessionLocal, quotes, publish=True)),
         asyncio.create_task(backfill()),
     ]
+
+    async def exit_when_stale() -> None:
+        await watch_quotes(quotes)
+        raise RuntimeError(f"no Binance quotes for {WORKER_STALE_EXIT_MS // 1000} s, exiting so Docker restarts the worker")
+
+    tasks.append(asyncio.create_task(exit_when_stale()))
     try:
         await asyncio.gather(*tasks)
     finally:

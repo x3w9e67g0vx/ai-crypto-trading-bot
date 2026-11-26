@@ -1,7 +1,9 @@
+import asyncio
+
 from app.core.db.models import Candle
 from app.game.price_feed import ClosedCandle
 from app.game.quotes import QuoteBook
-from app.worker import backfill_all, binance_healthy, handle_binance_candle, handle_bybit_candle
+from app.worker import backfill_all, binance_healthy, handle_binance_candle, handle_bybit_candle, watch_quotes
 from tests.api.conftest import quotes, session_factory  # noqa: F401  shared fixtures
 from tests.game.conftest import NOW
 
@@ -48,3 +50,17 @@ def test_backfill_all_survives_one_symbol_error(session_factory, monkeypatch):
 
     assert backfill_all(session_factory, fetch, NOW, history_ms=600_000) == 1
     assert stored(session_factory) == [("ETH/USDT", NOW - 300_000, "binance")]
+
+
+def test_watch_quotes_returns_when_binance_goes_silent(quotes):
+    clock = iter([NOW, NOW + 60_000, NOW + 300_001])
+    _run(watch_quotes(quotes, now=lambda: next(clock), max_age_ms=300_000, check_every_s=0))
+
+
+def test_watch_quotes_counts_from_start_without_quotes():
+    clock = iter([NOW, NOW + 299_999, NOW + 300_001])
+    _run(watch_quotes(QuoteBook(), now=lambda: next(clock), max_age_ms=300_000, check_every_s=0))
+
+
+def _run(coro):
+    asyncio.run(asyncio.wait_for(coro, 1))
