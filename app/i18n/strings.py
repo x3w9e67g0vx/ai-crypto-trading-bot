@@ -35,6 +35,24 @@ STRINGS: dict[str, dict[str, str]] = {
         "season.sprint": "Спринт",
         "season.week": "Неделя",
         "season.duel": "Дуэль",
+        "season.weekend": "Выходные",
+        "weekend.joined_soon": (
+            "🏆 Ты в турнире выходных! Старт в субботу {start} 00:00 UTC, финиш в понедельник 00:00 UTC.\n"
+            "Отдельный портфель 10 000 $, против тебя и ИИ. Топ-3 получают {first}/{second}/{third} дней Pro "
+            "и рамку «Кубок», все, кто обойдёт лучший ИИ, — бейдж."
+        ),
+        "weekend.joined_live": (
+            "🏆 Ты в турнире выходных! Он идёт до понедельника 00:00 UTC. "
+            "Жми «Играть» и выбирай «Выходные». Топ-3 получают {first}/{second}/{third} дней Pro и рамку «Кубок»."
+        ),
+        "channel.weekend.title": "🏆 <b>Турнир выходных</b>",
+        "channel.weekend.when": "Сб {start} 00:00 — Пн {end} 00:00 UTC. Отдельный портфель 10 000 $, ИИ тоже в игре.",
+        "channel.weekend.prizes": "Призы: 🥇 {first} дней Pro, 🥈 {second}, 🥉 {third} + рамка «Кубок». Обошёл лучший ИИ — бейдж.",
+        "channel.weekend.joined": "Уже записались: {count}",
+        "channel.weekend.signup": "Записаться: {link}",
+        "channel.weekend.outro": "Следующий турнир — в эти выходные. Запись в боте: /weekend",
+        "channel.badge.weekend_cup": "🏆 Кубок выходных (топ-3):",
+        "item.frame_cup": "Рамка «Кубок»",
         "notify.duel_win": "🏆 Ты обыграл {rival} в дуэли: {my_pct}% против {rival_pct}%. Счёт {score}.",
         "notify.duel_lose": "⚔️ {rival} взял дуэль: {rival_pct}% против твоих {my_pct}%. Счёт {score}. Реванш — в игре.",
         "notify.duel_draw": "🤝 Ничья с {rival}: {my_pct}% против {rival_pct}%. Счёт {score}.",
@@ -93,6 +111,7 @@ STRINGS: dict[str, dict[str, str]] = {
             "/play — открыть игру\n"
             "/rank — места в сезонах и реф-ссылка\n"
             "/learn — уроки\n"
+            "/weekend — турнир выходных\n"
             "/settings — уведомления и язык\n"
             "/help — эта справка\n"
             "/league — частная лига (в группе)\n\n{disclaimer}"
@@ -117,7 +136,7 @@ STRINGS: dict[str, dict[str, str]] = {
             "D1: {d1_kept}/{d1_total} · D7: {d7_kept}/{d7_total}\n"
             "Активных в неделе: {week_active}\nСделок сегодня: {trades_today}"
         ),
-        "admin.usage": "/admin · /admin ban|unban &lt;ник&gt; · /admin end|restart sprint|week · /admin post morning|lesson|evening|season|ai_move",
+        "admin.usage": "/admin · /admin ban|unban &lt;ник&gt; · /admin end|restart sprint|week · /admin post morning|lesson|evening|season|ai_move|weekend",
         "admin.post_empty": "Для этого поста пока нет данных.",
         "admin.banned": "{nickname} заблокирован.",
         "admin.unbanned": "{nickname} разблокирован.",
@@ -199,6 +218,24 @@ STRINGS: dict[str, dict[str, str]] = {
         "season.sprint": "Sprint",
         "season.week": "Week",
         "season.duel": "Duel",
+        "season.weekend": "Weekend",
+        "weekend.joined_soon": (
+            "🏆 You're in the weekend tournament! It starts Saturday {start} 00:00 UTC and ends Monday 00:00 UTC.\n"
+            "A separate $10,000 portfolio against players and AI. Top 3 get {first}/{second}/{third} days of Pro "
+            "and the Cup frame; everyone who beats the best AI gets a badge."
+        ),
+        "weekend.joined_live": (
+            "🏆 You're in the weekend tournament! It runs until Monday 00:00 UTC. "
+            "Tap Play and pick Weekend. Top 3 get {first}/{second}/{third} days of Pro and the Cup frame."
+        ),
+        "channel.weekend.title": "🏆 <b>Weekend tournament</b>",
+        "channel.weekend.when": "Sat {start} 00:00 — Mon {end} 00:00 UTC. A separate $10,000 portfolio, the AI plays too.",
+        "channel.weekend.prizes": "Prizes: 🥇 {first} days of Pro, 🥈 {second}, 🥉 {third} + the Cup frame. Beat the best AI — get a badge.",
+        "channel.weekend.joined": "Signed up: {count}",
+        "channel.weekend.signup": "Sign up: {link}",
+        "channel.weekend.outro": "The next tournament is this weekend. Sign up in the bot: /weekend",
+        "channel.badge.weekend_cup": "🏆 Weekend cup (top 3):",
+        "item.frame_cup": "Cup frame",
         "notify.duel_win": "🏆 You beat {rival} in the duel: {my_pct}% vs {rival_pct}%. Score {score}.",
         "notify.duel_lose": "⚔️ {rival} took the duel: {rival_pct}% vs your {my_pct}%. Score {score}. Rematch in the game.",
         "notify.duel_draw": "🤝 Draw with {rival}: {my_pct}% vs {rival_pct}%. Score {score}.",
@@ -257,6 +294,7 @@ STRINGS: dict[str, dict[str, str]] = {
             "/play — open the game\n"
             "/rank — season places and invite link\n"
             "/learn — lessons\n"
+            "/weekend — weekend tournament\n"
             "/settings — notifications and language\n"
             "/help — this help\n"
             "/league — private league (in a group)\n\n{disclaimer}"
@@ -281,7 +319,7 @@ STRINGS: dict[str, dict[str, str]] = {
             "D1: {d1_kept}/{d1_total} · D7: {d7_kept}/{d7_total}\n"
             "Active this week: {week_active}\nTrades today: {trades_today}"
         ),
-        "admin.usage": "/admin · /admin ban|unban &lt;nick&gt; · /admin end|restart sprint|week · /admin post morning|lesson|evening|season|ai_move",
+        "admin.usage": "/admin · /admin ban|unban &lt;nick&gt; · /admin end|restart sprint|week · /admin post morning|lesson|evening|season|ai_move|weekend",
         "admin.post_empty": "No data for this post yet.",
         "admin.banned": "{nickname} is banned.",
         "admin.unbanned": "{nickname} is unbanned.",

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.game.ai_view import is_pro
 from app.game.errors import CosmeticLocked
-from app.game.models import Payment, Player
+from app.game.models import Badge, Payment, Player
 
 DAY_MS = 24 * 60 * 60 * 1000
 REFERRAL_PRO_DAYS = 3
@@ -21,6 +21,7 @@ class Item:
     kind: str  # pro | one of SLOTS
     stars: int | None  # None: comes with Pro, not sold
     days: int = 0  # Pro length
+    badge: str | None = None  # a prize: owned forever by holders of this badge, never sold
 
 
 ITEMS = {
@@ -31,6 +32,7 @@ ITEMS = {
         Item("frame_gold", "frame", None),
         Item("frame_neon", "frame", 150),
         Item("frame_fire", "frame", 300),
+        Item("frame_cup", "frame", None, badge="weekend_cup"),
         Item("color_mint", "nick_color", None),
         Item("color_violet", "nick_color", 75),
         Item("color_amber", "nick_color", 75),
@@ -47,12 +49,17 @@ def extend_pro(player: Player, days: int, now_ms: int) -> None:
 
 
 def bought(db: Session, player: Player) -> set[str]:
-    return {item for (item,) in db.query(Payment.item).filter_by(player_id=player.id)}
+    """Paid items and prizes the player won."""
+    badges = {code for (code,) in db.query(Badge.code).filter_by(player_id=player.id)}
+    prizes = {item.code for item in ITEMS.values() if item.badge in badges}
+    return prizes | {item for (item,) in db.query(Payment.item).filter_by(player_id=player.id)}
 
 
 def _wearable(player: Player, item: Item, owned: set[str] | None, now_ms: int) -> bool:
     if item.kind == "pro":
         return False
+    if item.badge is not None:
+        return owned is None or item.code in owned
     if item.stars is None:
         return is_pro(player, now_ms)
     return owned is None or item.code in owned
@@ -72,7 +79,13 @@ def wardrobe(db: Session, player: Player, now_ms: int) -> list[dict]:
     """Every cosmetic with its price and whether the player may wear it now."""
     owned = bought(db, player)
     return [
-        {"code": item.code, "slot": item.kind, "stars": item.stars, "available": _wearable(player, item, owned, now_ms)}
+        {
+            "code": item.code,
+            "slot": item.kind,
+            "stars": item.stars,
+            "prize": item.badge is not None,
+            "available": _wearable(player, item, owned, now_ms),
+        }
         for item in ITEMS.values()
         if item.kind != "pro"
     ]

@@ -82,7 +82,7 @@ def test_seasons_job_rolls_over(db, quotes):
     make_season(db, SeasonKind.WEEK)
 
     assert run_seasons(db, quotes, NOW) == 0
-    assert db.query(Season).count() == 2
+    assert db.query(Season).count() == 3  # sprint, week and the coming weekend tournament
 
     assert run_seasons(db, quotes, sprint.ends_at) == 1
     assert sprint.status == "finished"

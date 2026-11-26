@@ -164,6 +164,13 @@ XP_PER_DUEL_DRAW = 15
 # Final values closer than this are a draw.
 DUEL_DRAW_EPS = 0.01
 
+# Weekend tournament: Saturday 00:00 UTC to Monday 00:00 UTC, players sign up in the bot.
+WEEKEND_KIND = "weekend"
+# Pro days for places 1, 2, 3; they also get the weekend_cup badge (the cup frame).
+WEEKEND_PRO_DAYS = (7, 5, 3)
+# The channel announce goes out this long before the start (Friday 10:00 UTC).
+WEEKEND_ANNOUNCE_MS = 14 * HOUR_MS
+
 # Day streak: a day counts when the player trades, passes a lesson or answers the daily puzzle.
 STREAK_KINDS = ("trade", "lesson_done", "puzzle_done", "replay_done", "scenario_done")
 # (days in a row, XP), granted once per streak run.

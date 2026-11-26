@@ -94,3 +94,7 @@ class ProRequired(GameError):
 
 class LlmUnavailable(GameError):
     code = "llm_unavailable"
+
+
+class WeekendNotRunning(GameError):
+    code = "weekend_not_running"

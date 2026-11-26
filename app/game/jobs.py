@@ -16,6 +16,7 @@ from app.game.models import AiDecision, Season
 from app.game.quotes import QuoteBook
 from app.game.seasons import ensure_current_season, finalize_season
 from app.game.trading import check_stops
+from app.game.weekend import ensure_weekend
 from app.services.indicator_service import IndicatorService
 
 
@@ -32,6 +33,7 @@ def run_seasons(db: Session, quotes: QuoteBook, now_ms: int) -> int:
     closed = sum(finalize_season(db, season, quotes, now_ms) for season in due)
     for kind in SeasonKind:
         ensure_current_season(db, kind, now_ms)
+    ensure_weekend(db, now_ms)
     return closed
 
 

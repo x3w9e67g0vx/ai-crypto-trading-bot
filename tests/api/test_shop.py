@@ -27,7 +27,7 @@ def test_me_lists_cosmetics_and_wardrobe(client):
     assert player["cosmetics"] == {"frame": None, "nick_color": None, "ai_skin": None}
     assert player["pro_until"] is None
     gold = next(item for item in player["wardrobe"] if item["code"] == "frame_gold")
-    assert gold == {"code": "frame_gold", "slot": "frame", "stars": None, "available": False}
+    assert gold == {"code": "frame_gold", "slot": "frame", "stars": None, "prize": False, "available": False}
 
 
 def test_equip_needs_pro_or_purchase(client, db):

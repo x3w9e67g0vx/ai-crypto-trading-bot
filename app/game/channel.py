@@ -21,6 +21,9 @@ from app.game.config import (
     DAY_MS,
     DUEL_KIND,
     HOUR_MS,
+    WEEKEND_ANNOUNCE_MS,
+    WEEKEND_KIND,
+    WEEKEND_PRO_DAYS,
     XP_PER_LESSON,
     SeasonKind,
 )
@@ -41,12 +44,12 @@ LESSON_CHART_SYMBOL = "BTC/USDT"
 RSI_LESSON = "07"
 TOP_DAY = 3
 TOP_SEASON = 5
-CHANNEL_BADGES = ("sniper", "iron_nerves")
+CHANNEL_BADGES = ("weekend_cup", "sniper", "iron_nerves")
 
 
 @dataclass(frozen=True)
 class Post:
-    kind: str  # morning | lesson | evening | season | ai_move
+    kind: str  # morning | lesson | evening | season | ai_move | weekend
     key: str
     text: str
     image: bytes | None = None
@@ -252,8 +255,24 @@ def season_post(db: Session, season: Season, quotes: QuoteBook, now_ms: int, bot
         ]
         if names:
             lines += ["", f"{_(f'channel.badge.{code}')} {', '.join(names)}"]
-    lines += ["", _("channel.season.outro")]
+    lines += ["", _("channel.weekend.outro" if season.kind == WEEKEND_KIND else "channel.season.outro")]
     return _post("season", str(season.id), lines, bot_username)
+
+
+def weekend_post(db: Session, season: Season, bot_username: str) -> Post:
+    """Friday announce of the weekend tournament with the sign-up link."""
+    from app.game.weekend import registered_count
+
+    def day(ms: int) -> str:
+        return datetime.fromtimestamp(ms / 1000, UTC).strftime("%d.%m")
+
+    lines = [_("channel.weekend.title"), "",
+             _("channel.weekend.when", start=day(season.starts_at), end=day(season.ends_at)),
+             _("channel.weekend.prizes", first=WEEKEND_PRO_DAYS[0], second=WEEKEND_PRO_DAYS[1],
+               third=WEEKEND_PRO_DAYS[2]),
+             _("channel.weekend.joined", count=registered_count(db, season)), "",
+             _("channel.weekend.signup", link=f"https://t.me/{bot_username}?start=weekend")]
+    return _post("weekend", str(season.id), lines, bot_username)
 
 
 def ai_move_post(db: Session, season: Season, now_ms: int, bot_username: str) -> Post | None:
@@ -312,6 +331,13 @@ def due_posts(db: Session, quotes: QuoteBook, now_ms: int, bot_username: str) ->
     for season in finished:
         candidates.append(("season", str(season.id), lambda season=season: season_post(db, season, quotes, now_ms, bot_username)))
         candidates.append(("ai_move", str(season.id), lambda season=season: ai_move_post(db, season, now_ms, bot_username)))
+    upcoming = (
+        db.query(Season)
+        .filter(Season.kind == WEEKEND_KIND, Season.starts_at > now_ms, Season.starts_at - WEEKEND_ANNOUNCE_MS <= now_ms)
+        .first()
+    )
+    if upcoming is not None:
+        candidates.append(("weekend", str(upcoming.id), lambda: weekend_post(db, upcoming, bot_username)))
     day_start = now_ms - now_ms % DAY_MS
     builders = _slot_builders(db, quotes, bot_username)
     for kind, offset in CHANNEL_SLOTS.items():
@@ -335,13 +361,17 @@ def due_posts(db: Session, quotes: QuoteBook, now_ms: int, bot_username: str) ->
     return posts
 
 
-PREVIEW_KINDS = ("morning", "lesson", "evening", "season", "ai_move")
+PREVIEW_KINDS = ("morning", "lesson", "evening", "season", "ai_move", "weekend")
 
 
 def preview_post(db: Session, quotes: QuoteBook, kind: str, now_ms: int, bot_username: str) -> Post | None:
     """/admin preview: the post as it would look now, not recorded; results use the latest finished season."""
     if kind in CHANNEL_SLOTS:
         return _slot_builders(db, quotes, bot_username)[kind](now_ms)
+    if kind == "weekend":
+        from app.game.weekend import ensure_weekend
+
+        return weekend_post(db, ensure_weekend(db, now_ms), bot_username)
     query = db.query(Season).filter(Season.status == "finished", Season.kind != DUEL_KIND)
     if kind == "ai_move":
         query = query.filter(Season.kind == SeasonKind.WEEK.value)

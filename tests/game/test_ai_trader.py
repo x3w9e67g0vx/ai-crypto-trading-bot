@@ -115,3 +115,14 @@ def test_decision_keeps_what_the_persona_decided_on(db, quotes):
 def test_unknown_symbol_rejected(db, quotes):
     with pytest.raises(UnknownSymbol):
         run_ai_turn(db, "ADA/USDT", CANDLE, {}, quotes, NOW)
+
+
+def test_ai_plays_the_weekend_tournament_once_it_started(db, quotes):
+    from app.game.config import DAY_MS, HOUR_MS
+
+    saturday = NOW - 12 * HOUR_MS + 3 * DAY_MS + HOUR_MS
+    candle = saturday - BAR_MS
+    quotes.update(Quote("BTC/USDT", bid=99.0, ask=101.0, ts=saturday))
+    run_ai_turn(db, "BTC/USDT", candle, {"lstm": Signal(candle_ts=candle, **BULLISH)}, quotes, saturday)
+    kinds = {portfolio.season.kind for portfolio in portfolios_of(db, "lstm")}
+    assert kinds == {SeasonKind.SPRINT.value, SeasonKind.WEEK.value, "weekend"}

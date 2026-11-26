@@ -1,4 +1,4 @@
-"""Player commands. Seven work in private chats only; /league is the group command.
+"""Player commands. Eight work in private chats only; /league is the group command.
 
 Dependencies come from the dispatcher's workflow data: session_factory, quotes,
 clock (() -> ms), bot_username, miniapp_url.
@@ -18,9 +18,11 @@ from app.game.chat_leagues import ensure_chat_league, join_chat_league
 from app.game.models import ChatLeague
 from app.game.players import start_player
 from app.game.duels import accept_duel, parse_duel
+from app.game.config import WEEKEND_PRO_DAYS
 from app.game.errors import DuelBusy, DuelNotFound, DuelOwn
 from app.game.referrals import apply_referral, register_start
 from app.game.shop import ITEMS, check_purchase, grant
+from app.game.weekend import register
 from app.i18n.strings import normalize_lang, t
 from app.telegram import views
 
@@ -193,6 +195,26 @@ async def league_callback(callback: CallbackQuery, session_factory, quotes, cloc
         await _edit(callback.message, text, keyboard)
 
 
+async def weekend_command(message: Message, session_factory, clock, miniapp_url: str) -> None:
+    """Sign up for this week's tournament (also `?start=weekend` from the channel)."""
+    with session_factory() as db:
+        now_ms = clock()
+        player, _ = start_player(db, tg_user(message.from_user), now_ms)
+        if player.is_banned:
+            await message.answer(t("banned", lang=player.language))
+            return
+        season = register(db, player, now_ms).season
+        db.commit()
+        first, second, third = WEEKEND_PRO_DAYS
+        if season.starts_at > now_ms:
+            start = time.strftime("%d.%m", time.gmtime(season.starts_at / 1000))
+            text = t("weekend.joined_soon", lang=player.language, start=start, first=first, second=second, third=third)
+        else:
+            text = t("weekend.joined_live", lang=player.language, first=first, second=second, third=third)
+        keyboard = views.play_keyboard(player.language, miniapp_url)
+    await message.answer(text, reply_markup=keyboard)
+
+
 async def shop_command(message: Message, session_factory, clock) -> None:
     with session_factory() as db:
         player, _ = start_player(db, tg_user(message.from_user), clock())
@@ -246,7 +268,9 @@ async def paid(message: Message, session_factory, clock) -> None:
 def create_router() -> Router:
     router = Router(name="game")
     router.message.register(shop_command, CommandStart(deep_link=True, magic=F.args == "pro"), PRIVATE)
+    router.message.register(weekend_command, CommandStart(deep_link=True, magic=F.args == "weekend"), PRIVATE)
     router.message.register(start, CommandStart(), PRIVATE)
+    router.message.register(weekend_command, Command("weekend"), PRIVATE)
     router.message.register(shop_command, Command("pro"), PRIVATE)
     router.callback_query.register(buy_callback, F.data.startswith("buy:"))
     router.pre_checkout_query.register(pre_checkout)

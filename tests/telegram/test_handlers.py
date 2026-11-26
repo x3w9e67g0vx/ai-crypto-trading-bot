@@ -181,3 +181,15 @@ def test_start_with_duel_accepts_and_tells_both(harness, session_factory):
 
     [again] = texts(harness.message(f"/start duel_{duel_id}", user_id=3, username="late"))
     assert "не действует" in again
+
+
+def test_weekend_sign_up_by_command_and_channel_link(harness, session_factory):
+    from app.game.models import Portfolio, Season
+
+    [text] = texts(harness.message("/start weekend"))
+    assert "турнире выходных" in text and "31.10" in text
+    [again] = texts(harness.message("/weekend"))
+    assert "турнире выходных" in again
+    with session_factory() as db:
+        seasons = db.query(Season.kind).join(Portfolio).filter(Portfolio.player_id == _player(session_factory).id)
+        assert [kind for (kind,) in seasons] == ["weekend"]

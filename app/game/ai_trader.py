@@ -15,6 +15,7 @@ from app.game.ai_personas import (
     view,
 )
 from app.game.config import AI_MIN_ORDER_USDT, AI_SYMBOLS, SeasonKind
+from app.game.weekend import live_weekend
 from app.game.errors import GameError, UnknownSymbol
 from app.game.models import AiDecision, Portfolio
 from app.game.quotes import QuoteBook
@@ -33,11 +34,14 @@ def run_ai_turn(
     now_ms: int,
 ) -> list[AiDecision]:
     """Let every persona with an opinion on this candle trade it in the
-    current sprint and week. Safe to call again for the same candle."""
+    current sprint and week, and in the weekend tournament while it runs. Safe to call again for the same candle."""
     if symbol not in AI_SYMBOLS:
         raise UnknownSymbol(symbol)
     players = ensure_ai_players(db, now_ms)
     seasons = [ensure_current_season(db, kind, now_ms) for kind in SeasonKind]
+    weekend = live_weekend(db, now_ms)
+    if weekend is not None:
+        seasons.append(weekend)
 
     decisions = []
     for persona in PERSONAS:

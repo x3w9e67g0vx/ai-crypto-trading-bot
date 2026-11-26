@@ -26,11 +26,20 @@ from app.game.config import (
     STALE_AFTER_MS,
     DUEL_KIND,
     STARTING_BALANCE,
+    WEEKEND_KIND,
     XP_PER_LESSON,
     SeasonKind,
 )
 from app.game.duels import cancel_duel, create_duel, duel_link, duel_portfolio, duel_view
-from app.game.errors import DuelNotFound, LessonNotFound, PositionExists, PositionNotFound, SymbolLocked, UnknownSymbol
+from app.game.errors import (
+    DuelNotFound,
+    LessonNotFound,
+    PositionExists,
+    PositionNotFound,
+    SymbolLocked,
+    UnknownSymbol,
+    WeekendNotRunning,
+)
 from app.game.insights import ai_entry_why, indicators_at, order_tips, trade_review
 from app.game.leaderboard import standings
 from app.game.llm_review import llm_review
@@ -48,6 +57,7 @@ from app.game.quotes import QuoteBook
 from app.game.referrals import ref_link
 from app.game.seasons import current_portfolio, ensure_current_season
 from app.game.streaks import claim_streak
+from app.game.weekend import ensure_weekend, weekend_info, weekend_portfolio
 from app.game.share import card_sig, share_info, share_text
 from app.i18n.strings import t
 from app.game.trading import (
@@ -63,11 +73,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/game", tags=["game"])
 
 SeasonParam = Literal["sprint", "week"]
-# Screens that also show the running friend duel.
-PlaySeason = Literal["sprint", "week", "duel"]
+# Screens that also show the running friend duel and weekend tournament.
+PlaySeason = Literal["sprint", "week", "duel", "weekend"]
 
 
 def _play_portfolio(db: Session, player: Player, season: str, now_ms: int) -> Portfolio:
+    if season == WEEKEND_KIND:
+        portfolio = weekend_portfolio(db, player, now_ms)
+        if portfolio is None:
+            raise WeekendNotRunning()
+        return portfolio
     if season != DUEL_KIND:
         return current_portfolio(db, player, season, now_ms)
     portfolio = duel_portfolio(db, player, now_ms)
@@ -119,11 +134,17 @@ def _me_json(db: Session, player: Player, quotes: QuoteBook, now_ms: int) -> dic
     duel = duel_portfolio(db, player, now_ms)
     if duel is not None:
         portfolios[DUEL_KIND] = duel
+    weekend = weekend_portfolio(db, player, now_ms)
+    if weekend is not None:
+        portfolios[WEEKEND_KIND] = weekend
+    weekend_card = weekend_info(db, player, now_ms)
+    weekend_card["link"] = f"https://t.me/{settings.BOT_USERNAME}?start=weekend" if settings.BOT_USERNAME else None
     streak = claim_streak(db, player, now_ms)
     db.commit()
     return {
         "player": _player_json(db, player, now_ms),
         "streak": streak,
+        "weekend": weekend_card,
         "portfolios": {
             kind: _portfolio_json(db, portfolio, quotes, now_ms) for kind, portfolio in portfolios.items()
         },
@@ -429,14 +450,14 @@ def get_leaderboard(
 
 @router.get("/ai")
 def get_ai_players(
-    season: SeasonParam,
+    season: Literal["sprint", "week", "weekend"],
     player: Player = Depends(current_player),
     db: Session = Depends(get_db),
     quotes: QuoteBook = Depends(get_quotes),
     now_ms: int = Depends(get_now_ms),
 ) -> list[dict]:
     """AI personas with positions and opinions, delayed for non-Pro viewers."""
-    season_row = ensure_current_season(db, SeasonKind(season), now_ms)
+    season_row = ensure_weekend(db, now_ms) if season == WEEKEND_KIND else ensure_current_season(db, SeasonKind(season), now_ms)
     db.commit()
     ai_players = {row.ai_key: row for row in db.query(Player).filter_by(is_ai=True)}
     result = []

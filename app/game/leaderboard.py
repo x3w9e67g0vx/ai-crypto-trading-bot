@@ -142,20 +142,24 @@ def _leaders(scores: dict[int, float], best) -> list[int]:
     return [player_id for player_id, score in scores.items() if score == target]
 
 
-def award_season_badges(db: Session, season: Season, quotes: QuoteBook, now_ms: int) -> list[Badge]:
-    """Prize badges go only to accounts older than N days with enough trades (anti-abuse)."""
-    rows = standings(db, season, quotes, now_ms)
+def prize_eligible(db: Session, season: Season, rows: list[Standing], now_ms: int) -> list[Standing]:
+    """Prizes go only to accounts older than N days with enough trades (anti-abuse); table order kept."""
     min_created_at = now_ms - PRIZE_MIN_ACCOUNT_AGE_DAYS * DAY_MS
-    portfolios = {portfolio.id: portfolio for portfolio in db.query(Portfolio).filter_by(season_id=season.id)}
-
-    eligible = [
+    players = {p.id: p for p in db.query(Player).join(Portfolio).filter(Portfolio.season_id == season.id)}
+    return [
         row
         for row in rows
         if row.qualified
         and not row.is_ai
-        and portfolios[row.portfolio_id].player.created_at <= min_created_at
-        and not portfolios[row.portfolio_id].player.is_banned
+        and players[row.player_id].created_at <= min_created_at
+        and not players[row.player_id].is_banned
     ]
+
+
+def award_season_badges(db: Session, season: Season, quotes: QuoteBook, now_ms: int) -> list[Badge]:
+    rows = standings(db, season, quotes, now_ms)
+    portfolios = {portfolio.id: portfolio for portfolio in db.query(Portfolio).filter_by(season_id=season.id)}
+    eligible = prize_eligible(db, season, rows, now_ms)
     rates = {}
     for row in eligible:
         rate = win_rate(db, portfolios[row.portfolio_id])

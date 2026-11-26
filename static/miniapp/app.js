@@ -219,17 +219,23 @@
         state.timers.push(setInterval(fn, ms));
     }
 
-    // The friend duel lives only on the trade and ranking screens, and only while it runs.
+    // The weekend tournament and friend duel live only on the trade and ranking screens, and only while they run.
     const DUEL_TABS = ["trade", "rank"];
+    const EXTRA_SEASONS = ["weekend", "duel"];
 
-    function hasDuel() {
-        return Boolean(state.me && state.me.portfolios.duel);
+    function hasSeason(kind) {
+        return !EXTRA_SEASONS.includes(kind) || Boolean(state.me && state.me.portfolios[kind]);
+    }
+
+    // Quests are sprint/week only.
+    function isMainSeason() {
+        return !EXTRA_SEASONS.includes(state.season);
     }
 
     async function go(tab) {
         stopTimers();
         state.tab = tab;
-        if (state.season === "duel" && (!DUEL_TABS.includes(tab) || !hasDuel())) state.season = "sprint";
+        if (!isMainSeason() && (!DUEL_TABS.includes(tab) || !hasSeason(state.season))) state.season = "sprint";
         document.querySelectorAll("#tabs button").forEach((button) => {
             if (button.dataset.tab === tab) button.setAttribute("aria-current", "page");
             else button.removeAttribute("aria-current");
@@ -243,7 +249,7 @@
 
     function seasonSwitch() {
         return `<div class="segmented" role="group">
-            ${["sprint", "week", ...(hasDuel() && DUEL_TABS.includes(state.tab) ? ["duel"] : [])]
+            ${["sprint", "week", ...(DUEL_TABS.includes(state.tab) ? EXTRA_SEASONS.filter(hasSeason) : [])]
                 .map((kind) => `<button data-season="${kind}" aria-pressed="${state.season === kind}">${esc(t(`season.${kind}`))}</button>`)
                 .join("")}
         </div>`;
@@ -280,8 +286,9 @@
         }
         const streakBox = $("#streak");
         if (streakBox) streakBox.innerHTML = streakLine();
-        // The duel just ended: back to the sprint screen.
-        if (state.season === "duel" && !hasDuel()) setTimeout(() => go(state.tab));
+        // The duel or tournament just ended: back to the sprint screen.
+        if (!hasSeason(state.season)) setTimeout(() => go(state.tab));
+        renderWeekend();
     }
 
     function renderSeasonMeta() {
@@ -530,7 +537,7 @@
         const [rows, closed, quests] = await Promise.all([
             api(`/game/positions?season=${state.season}`),
             api(`/game/positions?season=${state.season}&status=closed`),
-            state.season === "duel" ? null : api(`/game/quests?season=${state.season}`),
+            isMainSeason() ? api(`/game/quests?season=${state.season}`) : null,
             refreshMe(),
         ]);
         renderPositions(rows);
@@ -629,7 +636,34 @@
         const [ai, friend] = await Promise.all([inDuel ? null : api(`/game/ai?season=${state.season}`), api("/game/duel")]);
         if (inDuel && friend.state === "active") renderVersus(friend.my_pct, friend.rival_pct, friend.rival);
         else if (ai) renderDuel(ai);
-        renderFriendDuel(inDuel ? { state: "hidden" } : friend);
+        renderFriendDuel(isMainSeason() ? friend : { state: "hidden" });
+    }
+
+    function renderWeekend() {
+        const box = $("#weekend");
+        const w = state.me && state.me.weekend;
+        if (!box || !w) return;
+        const now = Date.now();
+        const live = w.starts_at <= now;
+        box.hidden = !isMainSeason();
+        const title = `<h3><span>${esc(t("weekend.title"))}</span></h3>`;
+        const when = live
+            ? t("season.ends_in", { time: duration(w.ends_at - now) })
+            : t("weekend.starts_in", { time: duration(w.starts_at - now) });
+        let action = "";
+        if (w.joined && live) action = `<button class="primary" data-weekend-open>${esc(t("weekend.open"))}</button>`;
+        else if (!w.joined && w.link) action = `<button class="primary" data-weekend-join>${esc(t("weekend.join"))}</button>`;
+        box.innerHTML = `${title}<p>${esc(t(w.joined ? "weekend.joined" : "weekend.pitch"))}
+            <span class="hint">· ${esc(when)}</span></p>${action}`;
+        const join = box.querySelector("[data-weekend-join]");
+        if (join) join.onclick = () => tg.openTelegramLink(w.link);
+        const open = box.querySelector("[data-weekend-open]");
+        if (open) {
+            open.onclick = () => {
+                state.season = "weekend";
+                go("trade");
+            };
+        }
     }
 
     function sendDuelInvite(body) {
@@ -758,6 +792,7 @@
             <div class="season-meta" id="season-meta"></div>
             <div id="streak">${streakLine()}</div>
             <section class="duel" id="duel" aria-live="polite"></section>
+            <section class="level-card" id="weekend" aria-live="polite"></section>
             <section class="level-card" id="friend-duel" aria-live="polite"></section>
             <p id="balance"></p>
             <div class="pairs" role="group">
@@ -788,7 +823,7 @@
               </div>
             </section>
             <section class="level-card" id="guess"></section>
-            <section class="level-card" id="quests" ${state.season === "duel" ? "hidden" : ""}></section>
+            <section class="level-card" id="quests" ${isMainSeason() ? "" : "hidden"}></section>
             <h2>${esc(t("positions.open"))}</h2>
             <ul class="list" id="positions"></ul>
             <h2>${esc(t("positions.history"))}</h2>
@@ -1311,7 +1346,7 @@
                     .map((item) => {
                         const label = item.available
                             ? t(`item.${item.code}`)
-                            : `${t(`item.${item.code}`)} · ${item.stars ? `${item.stars} ⭐` : "Pro"}`;
+                            : `${t(`item.${item.code}`)} · ${item.prize ? "🏆" : item.stars ? `${item.stars} ⭐` : "Pro"}`;
                         const selected = player.cosmetics[slot] === item.code ? "selected" : "";
                         return `<option value="${item.code}" ${item.available ? "" : "disabled"} ${selected}>${esc(label)}</option>`;
                     })
