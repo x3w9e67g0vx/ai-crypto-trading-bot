@@ -38,7 +38,19 @@ def share_text(info: ShareInfo, season_kind: str, lang: str) -> str:
     return t("share.result", lang=lang, season=season, ret=info.return_pct)
 
 
+def _sig(message: str) -> str:
+    return hmac.new(settings.TELEGRAM_BOT_TOKEN.encode(), message.encode(), hashlib.sha256).hexdigest()[:32]
+
+
 def card_sig(portfolio_id: int) -> str:
     """Signs card links so the public PNG endpoint cannot be walked through every portfolio."""
-    message = f"card:{portfolio_id}".encode()
-    return hmac.new(settings.TELEGRAM_BOT_TOKEN.encode(), message, hashlib.sha256).hexdigest()[:32]
+    return _sig(f"card:{portfolio_id}")
+
+
+def duel_card_sig(duel_id: int, player_id: int) -> str:
+    return _sig(f"duel:{duel_id}:{player_id}")
+
+
+def duel_share_text(row: dict, lang: str) -> str:
+    """`row` is a finished `duels.result_for` from the sharing player's side."""
+    return t(f"share.duel.{row['outcome']}", lang=lang, rival=row["rival"], mine=row["my_pct"], theirs=row["rival_pct"])

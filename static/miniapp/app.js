@@ -701,7 +701,8 @@
             box.innerHTML = `${title}<p>${esc(t(`fduel.${d.outcome}`, { rival: d.rival }))}
                 <span class="num ${trend(d.my_pct)}">${pct(d.my_pct)}</span> / <span class="num ${trend(d.rival_pct)}">${pct(d.rival_pct)}</span>
                 <span class="hint">${esc(score + xp)}</span></p>
-                <button class="primary" data-duel="POST">${esc(t("fduel.rematch"))}</button>`;
+                <div class="tip-actions"><button class="primary" data-duel="POST">${esc(t("fduel.rematch"))}</button>
+                <button data-duel-share>${esc(t("share.button"))}</button></div>`;
         } else {
             box.innerHTML = `${title}<p class="hint">${esc(t("fduel.pitch"))}</p>
                 <button class="primary" data-duel="POST">${esc(t("fduel.challenge"))}</button>`;
@@ -709,6 +710,16 @@
         box.querySelectorAll("[data-duel]").forEach((button) => {
             button.onclick = () => duelAction(button.dataset.duel);
         });
+        const shareButton = box.querySelector("[data-duel-share]");
+        if (shareButton) {
+            shareButton.onclick = async () => {
+                try {
+                    await shareModal(await api("/game/duel/share", { method: "POST" }));
+                } catch (error) {
+                    toast(errorText(error));
+                }
+            };
+        }
         const open = box.querySelector("[data-duel-open]");
         if (open) {
             open.onclick = async () => {

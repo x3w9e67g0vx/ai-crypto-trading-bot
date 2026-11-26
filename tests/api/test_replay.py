@@ -1,4 +1,4 @@
-from app.game.config import REPLAY_CANDLES, XP_PER_REPLAY, XP_PER_SCENARIO
+from app.game.config import AI_SYMBOLS, REPLAY_CANDLES, XP_PER_REPLAY, XP_PER_SCENARIO
 from tests.api.conftest import auth
 from tests.game.test_replay import add_candles
 
@@ -8,7 +8,7 @@ def test_replay_null_without_history(client):
 
 
 def test_replay_flow(client, db):
-    add_candles(db)
+    add_candles(db, symbols=AI_SYMBOLS)  # the replay picks a random AI pair
     db.commit()
     replay = client.get("/game/replay", headers=auth()).json()["replay"]
     assert len(replay["candles"]) == REPLAY_CANDLES

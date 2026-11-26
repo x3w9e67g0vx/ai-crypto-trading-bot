@@ -4,7 +4,7 @@ import warnings
 from PIL import Image
 
 from app.core.db.models import Candle
-from app.game.charts import candle_chart, share_card
+from app.game.charts import candle_chart, duel_card, share_card
 from tests.game.conftest import NOW
 
 PNG = b"\x89PNG\r\n\x1a\n"
@@ -51,3 +51,15 @@ def test_share_card_png():
         behind = share_card(nickname="bob", season="sprint", return_pct=-1.5, rank=None, beat_ai_by=None, lang="en")
     assert png.startswith(PNG) and behind.startswith(PNG)
     assert _size(png) == (1080, 1920)
+
+
+def test_duel_card_png(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "BOT_USERNAME", "veydranox_bot")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        win = duel_card(nickname="Вася", rival="bob", my_pct=3.2, rival_pct=-1.1, outcome="win", score=[2, 1], lang="ru")
+        draw = duel_card(nickname="bob", rival="Вася", my_pct=0, rival_pct=0, outcome="draw", score=[0, 0], lang="en")
+    assert win.startswith(PNG) and draw.startswith(PNG)
+    assert _size(win) == (1080, 1920)

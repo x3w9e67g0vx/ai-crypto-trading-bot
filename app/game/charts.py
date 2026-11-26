@@ -8,6 +8,7 @@ import pandas as pd
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 
+from app.core.config import settings
 from app.core.db.models import Candle
 from app.i18n.strings import t
 
@@ -80,13 +81,7 @@ def share_card(
     lang: str,
 ) -> bytes:
     """1080x1920 story-sized card: nickname, season return, place and the race against AI."""
-    figure = Figure(figsize=(10.8, 19.2), dpi=100, facecolor=BG)
-
-    def text(y, value, size, color=TEXT, weight="normal"):
-        figure.text(0.5, y, value, color=color, fontsize=size, fontweight=weight, ha="center", va="center", family=FONT)
-
-    text(0.86, "VEYDRANOX", 64, ACCENT, "bold")
-    text(0.82, t("card.tagline", lang=lang), 30, MUTED)
+    figure, text = _card(lang)
     text(0.66, nickname, 48, TEXT, "bold")
     text(0.54, f"{return_pct:+.2f}%", 120, UP if return_pct >= 0 else DOWN, "bold")
     text(0.47, t(f"card.season.{season}", lang=lang), 36, MUTED)
@@ -96,5 +91,41 @@ def share_card(
         text(0.30, t("card.beat_ai", lang=lang, margin=beat_ai_by), 44, ACCENT, "bold")
     else:
         text(0.30, t("card.behind_ai", lang=lang), 44, ACCENT, "bold")
-    text(0.06, t("card.footer", lang=lang), 20, MUTED)
     return _png(figure)
+
+
+def duel_card(
+    *,
+    nickname: str,
+    rival: str,
+    my_pct: float,
+    rival_pct: float,
+    outcome: str,
+    score: Sequence[int],
+    lang: str,
+) -> bytes:
+    """1080x1920 card of a finished friend duel from the sharing player's side."""
+    figure, text = _card(lang)
+    text(0.70, t("card.duel.title", lang=lang), 36, MUTED)
+    text(0.63, t(f"card.duel.{outcome}", lang=lang), 64, UP if outcome == "win" else TEXT, "bold")
+    for y, name, value in ((0.56, nickname, my_pct), (0.38, rival, rival_pct)):
+        text(y, name, 40, TEXT, "bold")
+        text(y - 0.055, f"{value:+.2f}%", 72, UP if value >= 0 else DOWN, "bold")
+    text(0.445, "vs", 32, MUTED)
+    text(0.24,t("card.duel.score", lang=lang, score=f"{score[0]}:{score[1]}"), 36, ACCENT, "bold")
+    return _png(figure)
+
+
+def _card(lang: str):
+    """Story-sized figure with the brand header and footer; returns it and a centred-text helper."""
+    figure = Figure(figsize=(10.8, 19.2), dpi=100, facecolor=BG)
+
+    def text(y, value, size, color=TEXT, weight="normal"):
+        figure.text(0.5, y, value, color=color, fontsize=size, fontweight=weight, ha="center", va="center", family=FONT)
+
+    text(0.86, "VEYDRANOX", 64, ACCENT, "bold")
+    text(0.82, t("card.tagline", lang=lang), 30, MUTED)
+    if settings.BOT_USERNAME:  # the picture alone, without the share text, still leads to the game
+        text(0.10, f"t.me/{settings.BOT_USERNAME}", 32, ACCENT, "bold")
+    text(0.06, t("card.footer", lang=lang), 20, MUTED)
+    return figure, text

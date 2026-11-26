@@ -15,7 +15,7 @@ from app.core.db.dependencies import get_db
 from app.core.db.models import Candle
 from app.game.ai_personas import PERSONAS
 from app.game.analytics import log_event
-from app.game.charts import share_card
+from app.game.charts import duel_card, share_card
 from app.game.ai_view import ai_decisions_view, ai_positions_view, is_pro
 from app.game.config import (
     CHART_TIMEFRAME,
@@ -30,7 +30,7 @@ from app.game.config import (
     XP_PER_LESSON,
     SeasonKind,
 )
-from app.game.duels import cancel_duel, create_duel, duel_link, duel_portfolio, duel_view
+from app.game.duels import cancel_duel, create_duel, duel_link, duel_portfolio, duel_view, result_for
 from app.game.errors import (
     DuelNotFound,
     LessonNotFound,
@@ -46,7 +46,7 @@ from app.game.llm_review import llm_review
 from app.game.shop import SLOTS, equip, wardrobe, worn
 from app.game.leagues import group_portfolio_ids
 from app.game.lessons import Lesson, get_lesson, get_lessons
-from app.game.models import Badge, Player, Portfolio, Position
+from app.game.models import Badge, Duel, Player, Portfolio, Position
 from app.game.players import unlocked_symbols, validate_nickname
 from app.game.guesses import guess_view, make_guess
 from app.game.puzzle import answer_puzzle, puzzle_view
@@ -58,7 +58,7 @@ from app.game.referrals import ref_link
 from app.game.seasons import current_portfolio, ensure_current_season
 from app.game.streaks import claim_streak
 from app.game.weekend import ensure_weekend, weekend_info, weekend_portfolio
-from app.game.share import card_sig, share_info, share_text
+from app.game.share import card_sig, duel_card_sig, duel_share_text, share_info, share_text
 from app.i18n.strings import t
 from app.game.trading import (
     close_position,
@@ -780,5 +780,58 @@ def share_card_png(
         rank=info.rank,
         beat_ai_by=info.beat_ai_by,
         lang=portfolio.player.language,
+    )
+    return Response(png, media_type="image/png", headers={"Cache-Control": f"public, max-age={CARD_MAX_AGE_S}"})
+
+
+@router.post("/duel/share")
+def share_duel(
+    player: Player = Depends(current_player),
+    db: Session = Depends(get_db),
+    quotes: QuoteBook = Depends(get_quotes),
+    now_ms: int = Depends(get_now_ms),
+) -> dict:
+    """Like /share, for the last finished friend duel."""
+    view = duel_view(db, player, quotes, now_ms)
+    if view["state"] != "finished":
+        raise DuelNotFound()
+    log_event(db, player, "share", now_ms)
+    db.commit()
+    return {
+        "text": duel_share_text(view, player.language),
+        "link": ref_link(settings.BOT_USERNAME, player) if settings.BOT_USERNAME else None,
+        "image_url": f"/game/share/duel/{view['id']}/{player.id}.png?sig={duel_card_sig(view['id'], player.id)}",
+    }
+
+
+@router.get("/share/duel/{duel_id}/{player_id}.png")
+def duel_card_png(
+    duel_id: int,
+    player_id: int,
+    sig: str = "",
+    db: Session = Depends(get_db),
+    quotes: QuoteBook = Depends(get_quotes),
+    now_ms: int = Depends(get_now_ms),
+) -> Response:
+    duel = db.get(Duel, duel_id)
+    player = db.get(Player, player_id)
+    if (
+        not hmac.compare_digest(sig.encode(), duel_card_sig(duel_id, player_id).encode())
+        or duel is None
+        or duel.status != "finished"
+        or player is None
+        or player.is_banned
+        or player_id not in (duel.challenger_id, duel.opponent_id)
+    ):
+        raise HTTPException(status_code=404)
+    row = result_for(db, duel, player_id, quotes, now_ms)
+    png = duel_card(
+        nickname=player.nickname,
+        rival=row["rival"],
+        my_pct=row["my_pct"],
+        rival_pct=row["rival_pct"],
+        outcome=row["outcome"],
+        score=row["score"],
+        lang=player.language,
     )
     return Response(png, media_type="image/png", headers={"Cache-Control": f"public, max-age={CARD_MAX_AGE_S}"})

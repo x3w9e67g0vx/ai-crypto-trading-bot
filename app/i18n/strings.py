@@ -151,6 +151,11 @@ STRINGS: dict[str, dict[str, str]] = {
         "card.beat_ai": "ИИ позади на {margin:.1f}%",
         "card.behind_ai": "Попробуй обойти ИИ",
         "card.footer": "Образовательная игра 18+ · деньги виртуальные · цены Binance",
+        "card.duel.title": "Дуэль трейдеров · 24 ч",
+        "card.duel.win": "Победа!",
+        "card.duel.lose": "Поражение",
+        "card.duel.draw": "Ничья",
+        "card.duel.score": "Счёт встреч {score}",
         "channel.footer": "{disclaimer}\n🎮 Играть: {link}",
         "channel.morning.title": "☀️ <b>Утренний разбор рынка</b>",
         "channel.morning.pair": "<b>{symbol}</b> {price}{change}\nRSI {rsi} · тренд {trend}",
@@ -200,6 +205,9 @@ STRINGS: dict[str, dict[str, str]] = {
         "channel.note.against_ai": "• Большинство ИИ думали иначе.",
         "share.beat_ai": "Мой результат {season}: {ret:+.2f}%, ИИ позади на {margin:.1f}%. Попробуй обойти его в VEYDRANOX!",
         "share.result": "Мой результат {season}: {ret:+.2f}% в VEYDRANOX. Сможешь обойти ИИ?",
+        "share.duel.win": "Победа в дуэли трейдеров с {rival}: {mine:+.2f}% против {theirs:+.2f}%. Сыграешь со мной в VEYDRANOX?",
+        "share.duel.lose": "Дуэль трейдеров с {rival}: {mine:+.2f}% против {theirs:+.2f}%. Беру реванш — сыграешь со мной в VEYDRANOX?",
+        "share.duel.draw": "Ничья в дуэли трейдеров с {rival}: {mine:+.2f}% против {theirs:+.2f}%. Кто сильнее — проверим в VEYDRANOX?",
     },
     "en": {
         "disclaimer": (
@@ -334,6 +342,11 @@ STRINGS: dict[str, dict[str, str]] = {
         "card.beat_ai": "AI left behind by {margin:.1f}%",
         "card.behind_ai": "Try to beat the AI",
         "card.footer": "Educational game 18+ · virtual money · Binance prices",
+        "card.duel.title": "Trader duel · 24h",
+        "card.duel.win": "Victory!",
+        "card.duel.lose": "Defeat",
+        "card.duel.draw": "Draw",
+        "card.duel.score": "Head-to-head {score}",
         "channel.footer": "{disclaimer}\n🎮 Play: {link}",
         "channel.morning.title": "☀️ <b>Morning market review</b>",
         "channel.morning.pair": "<b>{symbol}</b> {price}{change}\nRSI {rsi} · trend {trend}",
@@ -383,6 +396,9 @@ STRINGS: dict[str, dict[str, str]] = {
         "channel.note.against_ai": "• Most AIs thought otherwise.",
         "share.beat_ai": "My result {season}: {ret:+.2f}%, AI left behind by {margin:.1f}%. Try to beat it in VEYDRANOX!",
         "share.result": "My result {season}: {ret:+.2f}% in VEYDRANOX. Can you beat the AI?",
+        "share.duel.win": "Won a trading duel against {rival}: {mine:+.2f}% vs {theirs:+.2f}%. Want to play me in VEYDRANOX?",
+        "share.duel.lose": "Trading duel with {rival}: {mine:+.2f}% vs {theirs:+.2f}%. Rematch time — want to play me in VEYDRANOX?",
+        "share.duel.draw": "Draw in a trading duel with {rival}: {mine:+.2f}% vs {theirs:+.2f}%. Who's stronger — find out in VEYDRANOX?",
     },
 }
 

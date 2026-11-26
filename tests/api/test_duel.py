@@ -34,3 +34,28 @@ def test_duel_flow(client, db, monkeypatch):
 def test_duel_cancel(client):
     client.post("/game/duel", headers=auth(ALICE))
     assert client.delete("/game/duel", headers=auth(ALICE)).json() == {"state": "none"}
+
+
+def test_duel_share_card(client, db, clock, monkeypatch):
+    from app.game.duels import accept_duel
+    from app.game.models import Player
+
+    monkeypatch.setattr(settings, "BOT_USERNAME", "veydranox_bot")
+    duel_id = client.post("/game/duel", headers=auth()).json()["id"]
+    assert client.post("/game/duel/share", headers=auth()).status_code == 404  # not finished yet
+
+    client.get("/game/me", headers=auth(BOB))
+    bob = db.query(Player).filter_by(telegram_id=BOB["id"]).one()
+    duel = accept_duel(db, duel_id, bob, clock["now"])
+    duel.status, duel.winner_id = "finished", duel.challenger_id
+    db.commit()
+
+    body = client.post("/game/duel/share", headers=auth()).json()
+    assert "Победа" in body["text"] and "Bob" in body["text"] and body["link"].startswith("https://t.me/veydranox_bot?start=ref_")
+    png = client.get(body["image_url"])
+    assert png.status_code == 200 and png.headers["content-type"] == "image/png"
+
+    path, sig = body["image_url"].split("?sig=")
+    bob_path = path.rsplit("/", 1)[0] + f"/{bob.id}.png"
+    assert client.get(path).status_code == 404
+    assert client.get(f"{bob_path}?sig={sig}").status_code == 404
