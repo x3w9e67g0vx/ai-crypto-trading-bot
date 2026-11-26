@@ -25,4 +25,4 @@ def test_guess_flow(client, db, clock):
 def test_guess_validation(client):
     assert client.post("/game/guess", json={"symbol": "BTC/USDT", "price": "moon", "view": "bullish"},
                        headers=auth()).status_code == 422
-    assert client.get("/game/guess", params={"symbol": "DOGE/USDT"}, headers=auth()).status_code in (400, 409)
+    assert client.get("/game/guess", params={"symbol": "ADA/USDT"}, headers=auth()).status_code in (400, 409)

@@ -29,7 +29,7 @@ def test_personas_match_spec():
     lstm, rf, lr = BY_KEY["lstm"], BY_KEY["random_forest"], BY_KEY["logistic_regression"]
     assert (lstm.buy_threshold, lstm.sell_threshold, lstm.position_fraction) == (0.65, 0.35, 0.40)
     assert (lstm.stop_loss_pct, lstm.take_profit_pct, lstm.use_trend_filter) == (0.03, 0.06, True)
-    assert (rf.buy_threshold, rf.sell_threshold, rf.position_fraction) == (0.70, 0.30, 0.15)
+    assert (rf.buy_threshold, rf.sell_threshold, rf.position_fraction) == (0.75, 0.25, 0.15)
     assert (rf.stop_loss_pct, rf.take_profit_pct, rf.use_trend_filter) == (0.015, 0.03, True)
     assert (lr.buy_threshold, lr.sell_threshold, lr.position_fraction) == (0.65, 0.35, 0.25)
     assert lr.use_trend_filter is False
@@ -98,7 +98,7 @@ def test_ensure_ai_players_idempotent(db):
     first = ensure_ai_players(db, NOW)
     second = ensure_ai_players(db, NOW)
 
-    assert set(first) == {"lstm", "random_forest", "logistic_regression"}
+    assert set(first) == {"lstm", "random_forest", "logistic_regression", "gradient_boosting"}
     assert {p.id for p in first.values()} == {p.id for p in second.values()}
-    assert db.query(Player).filter_by(is_ai=True).count() == 3
+    assert db.query(Player).filter_by(is_ai=True).count() == len(PERSONAS)
     assert all(p.telegram_id is None for p in first.values())

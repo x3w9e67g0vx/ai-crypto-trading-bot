@@ -54,9 +54,9 @@ GAME_SYMBOLS = STARTER_SYMBOLS + (
     "HBAR/USDT",
 ) + PRO_SYMBOLS
 
-# AI personas trade the starter pairs on closed candles of the timeframe
-# their models were trained on.
-AI_SYMBOLS = STARTER_SYMBOLS
+# AI personas trade the starter pairs and the first unlockable top pairs on closed
+# candles of the timeframe their models were trained on.
+AI_SYMBOLS = STARTER_SYMBOLS + ("BNB/USDT", "XRP/USDT", "DOGE/USDT")
 AI_TIMEFRAME = "5m"
 # Mini App chart candles.
 CHART_TIMEFRAME = "5m"

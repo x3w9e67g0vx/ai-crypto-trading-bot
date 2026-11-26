@@ -19,7 +19,7 @@ def test_why_long_follows_the_decision(db, quotes):
 
     assert why["nickname"] == "LSTM"
     assert (why["symbol"], why["side"]) == ("BTC/USDT", "long")
-    assert why["probability_up"] == 0.7
+    assert why["probability_up"] == 0.8
     assert why["threshold"] == 0.65
     assert why["trend_filter"] is True
     assert why["trend"] == "up"

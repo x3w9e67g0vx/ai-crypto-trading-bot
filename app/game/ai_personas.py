@@ -25,11 +25,15 @@ class Persona:
 # Thresholds tuned 2026-11-24 on the out-of-sample 5m window, BTC+ETH+SOL summed:
 # LSTM 0.55->0.65 (-0.3% -> +1.1%), RF 0.65->0.70 (-4.6% -> -0.6%),
 # LogReg 0.55->0.65 (-20.3% -> -7.9%). Weak models lose less by trading less.
+# Retuned 2026-11-26 after retraining, picked on BTC+ETH+SOL and checked on BNB+XRP+DOGE:
+# RF 0.70->0.75 (-0.0% -> +2.3%, check +1.4%), GB 0.60->0.75 (-6.9% -> -1.7%, check +0.1%).
 PERSONAS = (
     Persona("lstm", "LSTM", 0.65, 0.35, 0.40, 0.03, 0.06, True),
-    Persona("random_forest", "Random Forest", 0.70, 0.30, 0.15, 0.015, 0.03, True),
+    Persona("random_forest", "Random Forest", 0.75, 0.25, 0.15, 0.015, 0.03, True),
     # The "newbie": no trend filter by design (with it: -5.6%); SL/TP reuse LSTM's.
     Persona("logistic_regression", "LogReg", 0.65, 0.35, 0.25, 0.03, 0.06, False),
+    # The "scalper": tight stop and take, small size, trades often.
+    Persona("gradient_boosting", "Gradient Boost", 0.75, 0.25, 0.20, 0.01, 0.02, True),
 )
 
 

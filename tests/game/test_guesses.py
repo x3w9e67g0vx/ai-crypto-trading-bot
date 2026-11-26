@@ -50,7 +50,7 @@ def test_one_guess_per_candle_and_known_symbols(db, player):
         make_guess(db, player, "BTC/USDT", "down", "bearish", NOW + 1000)
     make_guess(db, player, "ETH/USDT", "up", "bullish", NOW)
     with pytest.raises(UnknownSymbol):
-        make_guess(db, player, "DOGE/USDT", "up", "bullish", NOW)
+        make_guess(db, player, "ADA/USDT", "up", "bullish", NOW)
     with pytest.raises(ValueError):
         make_guess(db, player, "SOL/USDT", "sideways", "bullish", NOW)
 

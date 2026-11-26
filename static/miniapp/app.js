@@ -874,8 +874,8 @@
     // ---------- AI ----------
 
     const AI_SKINS = {
-        skin_robots: { lstm: "🤖", random_forest: "🦾", logistic_regression: "📟" },
-        skin_beasts: { lstm: "🦉", random_forest: "🦊", logistic_regression: "🐹" },
+        skin_robots: { lstm: "🤖", random_forest: "🦾", logistic_regression: "📟", gradient_boosting: "🛰️" },
+        skin_beasts: { lstm: "🦉", random_forest: "🦊", logistic_regression: "🐹", gradient_boosting: "🐆" },
     };
 
     function aiAvatar(key) {

@@ -16,6 +16,7 @@ from app.core.db.session import SessionLocal
 from app.game.ai_personas import PERSONAS
 from app.game.config import AI_SYMBOLS, AI_TIMEFRAME, MAX_PAIR_SHARE
 from app.services.backtest_service import BacktestService
+from app.services.indicator_service import IndicatorService
 from app.services.lstm_model_service import LSTMModelService
 from app.services.ml_model_service import MLModelService
 
@@ -51,6 +52,7 @@ def main() -> None:
     db = SessionLocal()
     try:
         for symbol in AI_SYMBOLS:
+            IndicatorService(db).calculate_and_save(symbol, AI_TIMEFRAME)
             for persona in PERSONAS:
                 params = persona_backtest_params(persona)
                 if persona.key == "lstm":

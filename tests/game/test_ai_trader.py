@@ -12,7 +12,7 @@ from tests.game.conftest import NOW
 
 BAR_MS = 5 * 60 * 1000
 CANDLE = NOW - BAR_MS
-BULLISH = dict(probability_up=0.7, ema_fast=101.0, ema_slow=100.0)
+BULLISH = dict(probability_up=0.8, ema_fast=101.0, ema_slow=100.0)
 BEARISH = dict(probability_up=0.3, ema_fast=99.0, ema_slow=100.0)
 
 
@@ -47,7 +47,7 @@ def btc_positions(db, ai_key):
 def test_bullish_opens_long_in_both_seasons(db, quotes):
     decisions = turn(db, quotes, {"lstm": BULLISH})
 
-    assert [(d.view, d.candle_ts, d.probability_up) for d in decisions] == [("bullish", CANDLE, 0.7)]
+    assert [(d.view, d.candle_ts, d.probability_up) for d in decisions] == [("bullish", CANDLE, 0.8)]
     kinds = {portfolio.season.kind for portfolio in portfolios_of(db, "lstm")}
     assert kinds == {SeasonKind.SPRINT.value, SeasonKind.WEEK.value}
     positions = btc_positions(db, "lstm")
@@ -108,10 +108,10 @@ def test_ai_not_in_league_groups(db, quotes):
 def test_decision_keeps_what_the_persona_decided_on(db, quotes):
     [decision] = turn(db, quotes, {"random_forest": BULLISH})
 
-    assert (decision.buy_threshold, decision.sell_threshold, decision.trend_filter) == (0.7, 0.3, True)
+    assert (decision.buy_threshold, decision.sell_threshold, decision.trend_filter) == (0.75, 0.25, True)
     assert (decision.ema_fast, decision.ema_slow) == (101.0, 100.0)
 
 
 def test_unknown_symbol_rejected(db, quotes):
     with pytest.raises(UnknownSymbol):
-        run_ai_turn(db, "BNB/USDT", CANDLE, {}, quotes, NOW)
+        run_ai_turn(db, "ADA/USDT", CANDLE, {}, quotes, NOW)
