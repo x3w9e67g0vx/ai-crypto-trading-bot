@@ -28,9 +28,12 @@ def test_level_info():
 
 def test_unlocks_by_level(db):
     player = make_player(db, telegram_id=1)
-    assert unlocked_symbols(player) == STARTER_SYMBOLS
+    assert unlocked_symbols(player, NOW) == STARTER_SYMBOLS
     player.xp = LEVEL_XP[2]  # level 3
-    assert unlocked_symbols(player) == STARTER_SYMBOLS + ("BNB/USDT", "XRP/USDT", "DOGE/USDT", "ADA/USDT")
+    assert unlocked_symbols(player, NOW) == STARTER_SYMBOLS + ("BNB/USDT", "XRP/USDT", "DOGE/USDT", "ADA/USDT")
+    player.is_pro_until = NOW + 1
+    assert unlocked_symbols(player, NOW)[-4:] == PRO_SYMBOLS
+    assert unlocked_symbols(player, NOW + 1)[-4:] != PRO_SYMBOLS
 
 
 def test_pair_unlocks_cover_game_symbols():

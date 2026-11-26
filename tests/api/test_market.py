@@ -1,5 +1,5 @@
 from app.core.db.models import Candle
-from app.game.config import STARTER_SYMBOLS
+from app.game.config import PRO_SYMBOLS, STARTER_SYMBOLS
 from tests.api.conftest import auth
 from tests.game.conftest import NOW
 
@@ -12,6 +12,7 @@ def test_quotes_lists_unlocked_symbols(client):
     assert body["source"] == "binance"
     assert body["exchange_down"] is False
     assert body["symbols"] == list(STARTER_SYMBOLS)
+    assert body["pro_symbols"] == list(PRO_SYMBOLS)
     btc = next(quote for quote in body["quotes"] if quote["symbol"] == "BTC/USDT")
     assert btc == {"symbol": "BTC/USDT", "bid": 99.0, "ask": 101.0, "ts": NOW, "fresh": True}
 

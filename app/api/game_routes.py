@@ -21,6 +21,7 @@ from app.game.config import (
     CHART_TIMEFRAME,
     FEE_RATE,
     GAME_SYMBOLS,
+    PRO_SYMBOLS,
     MAX_TRADES_PER_DAY,
     STALE_AFTER_MS,
     DUEL_KIND,
@@ -188,12 +189,13 @@ def get_market_quotes(
     quotes: QuoteBook = Depends(get_quotes),
     now_ms: int = Depends(get_now_ms),
 ) -> dict:
-    symbols = unlocked_symbols(player)
+    symbols = unlocked_symbols(player, now_ms)
     last_update = quotes.last_update_ms()
     return {
         "source": "binance",
         "exchange_down": last_update is None or now_ms - last_update > STALE_AFTER_MS,
         "symbols": list(symbols),
+        "pro_symbols": list(PRO_SYMBOLS),
         "quotes": [_quote_json(symbol, quotes, now_ms) for symbol in symbols],
     }
 
@@ -265,7 +267,7 @@ def place_order(
 ) -> dict:
     if order.symbol not in GAME_SYMBOLS:
         raise UnknownSymbol(order.symbol)
-    if order.symbol not in unlocked_symbols(player):
+    if order.symbol not in unlocked_symbols(player, now_ms):
         raise SymbolLocked(order.symbol)
     portfolio = _play_portfolio(db, player, order.season, now_ms)
     value_before = portfolio_value(portfolio, quotes, now_ms, allow_stale=True)

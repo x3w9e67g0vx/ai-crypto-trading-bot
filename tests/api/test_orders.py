@@ -1,9 +1,10 @@
 import pytest
 
 import app.game.trading as trading
-from app.game.models import Position
+from app.game.config import DAY_MS
+from app.game.models import Player, Position
 from app.game.quotes import Quote
-from tests.api.conftest import BOB, auth
+from tests.api.conftest import ALICE, BOB, auth
 from tests.game.conftest import NOW
 
 
@@ -47,6 +48,15 @@ def test_locked_symbol_rejected(client):
     assert response.json()["detail"]["code"] == "symbol_locked"
 
     assert _order(client, symbol="FAKE/USDT").json()["detail"]["code"] == "unknown_symbol"
+
+
+def test_pro_symbol_needs_pro(client, db, quotes):
+    quotes.update(Quote("WIF/USDT", bid=99.0, ask=101.0, ts=NOW))
+    assert _order(client, symbol="WIF/USDT").json()["detail"]["code"] == "symbol_locked"
+
+    db.query(Player).filter_by(telegram_id=ALICE["id"]).update({"is_pro_until": NOW + DAY_MS})
+    db.commit()
+    assert _order(client, symbol="WIF/USDT").status_code == 200
 
 
 def test_game_rule_maps_to_409(client):
