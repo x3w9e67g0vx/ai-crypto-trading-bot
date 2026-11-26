@@ -752,6 +752,7 @@
 
     async function tradeScreen() {
         const symbols = (state.quotes && state.quotes.symbols) || ["BTC/USDT", "ETH/USDT", "SOL/USDT"];
+        const proSymbols = (state.quotes && state.quotes.pro_symbols) || [];
         screen.innerHTML = `
             ${seasonSwitch()}
             <div class="season-meta" id="season-meta"></div>
@@ -760,7 +761,8 @@
             <section class="level-card" id="friend-duel" aria-live="polite"></section>
             <p id="balance"></p>
             <div class="pairs" role="group">
-              ${symbols.map((symbol) => `<button data-symbol="${esc(symbol)}" aria-pressed="${symbol === state.symbol}">${esc(symbol.replace("/USDT", ""))}</button>`).join("")}
+              ${symbols.map((symbol) => `<button data-symbol="${esc(symbol)}" aria-pressed="${symbol === state.symbol}">${proSymbols.includes(symbol) ? "⭐ " : ""}${esc(symbol.replace("/USDT", ""))}</button>`).join("")}
+              ${proSymbols.filter((symbol) => !symbols.includes(symbol)).map((symbol) => `<button class="pro-locked" data-pro-symbol="${esc(symbol)}">🔒 ${esc(symbol.replace("/USDT", ""))}</button>`).join("")}
             </div>
             <div class="quote-row" id="quote"></div>
             <div id="chart"></div>
@@ -797,6 +799,12 @@
             button.onclick = () => {
                 state.symbol = button.dataset.symbol;
                 go("trade");
+            };
+        });
+        screen.querySelectorAll("[data-pro-symbol]").forEach((button) => {
+            button.onclick = () => {
+                toast(t("pairs.pro_locked", { pair: button.dataset.proSymbol.replace("/USDT", "") }));
+                openShop();
             };
         });
         screen.querySelectorAll("[data-share]").forEach((button) => {

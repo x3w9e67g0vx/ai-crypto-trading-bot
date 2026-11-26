@@ -48,8 +48,9 @@ STRINGS: dict[str, dict[str, str]] = {
             "⭐ <b>VEYDRANOX Pro</b>\n"
             "• позиции ИИ сразу, без задержки в 1 час\n"
             "• разборы сделок от ИИ-тренера\n"
+            "• Pro-пары с любого уровня: золото XAUT, WIF, BONK, TRUMP\n"
             "• Pro-косметика: золотая рамка, мятный ник, ИИ-роботы\n"
-            "На торговлю не влияет: денег и преимуществ в игре не даёт.\n\n"
+            "Денег в игре не даёт: баланс у всех одинаковый.\n\n"
             "{status}\n\nКосметика за ⭐ — навсегда:"
         ),
         "shop.pro_until": "Pro активен до {until} UTC.",
@@ -211,8 +212,9 @@ STRINGS: dict[str, dict[str, str]] = {
             "⭐ <b>VEYDRANOX Pro</b>\n"
             "• AI positions live, no 1-hour delay\n"
             "• trade reviews by the AI coach\n"
+            "• Pro pairs at any level: gold XAUT, WIF, BONK, TRUMP\n"
             "• Pro cosmetics: gold frame, mint nickname, AI robots\n"
-            "No effect on trading: gives no money or edge in the game.\n\n"
+            "Gives no in-game money: everyone starts with the same balance.\n\n"
             "{status}\n\nCosmetics for ⭐ — yours forever:"
         ),
         "shop.pro_until": "Pro is active until {until} UTC.",

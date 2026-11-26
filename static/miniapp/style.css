@@ -596,3 +596,8 @@ dialog h2 {
 .nick.nick-color_violet { color: #8b5cf6; }
 .nick.nick-color_amber { color: #f59e0b; }
 .llm-text { white-space: pre-wrap; line-height: 1.45; }
+
+.pairs button.pro-locked {
+    color: var(--hint);
+    border-style: dashed;
+}
